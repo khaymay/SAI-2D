@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "data/draws.csv"
-      - "data/predictions.json"
       - "scripts/run_pipeline.py"
   workflow_dispatch:
 
