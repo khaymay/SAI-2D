@@ -85,6 +85,8 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
     d["Date_dt"] = pd.to_datetime(d["Date"])
     d["DayOfWeek"] = d["Date_dt"].dt.dayofweek
     nums = d["Winning_Number"].values
+    dows = d["DayOfWeek"].values
+    pms = d["Is_PM"].values
     n = len(d)
 
     d["sin_doy"] = np.sin(2 * np.pi * d["Day_of_Year"] / 365.25)
@@ -102,6 +104,18 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
     cur_t_gap, cur_u_gap = np.zeros(10), np.zeros(10)
     hist_t, hist_u = [], []
 
+    # Expanding leak-free Day-of-Week x AM/PM positional & any-position digit rates
+    dow_t_rate = np.zeros((n, 10))
+    dow_u_rate = np.zeros((n, 10))
+    dow_any_rate = np.zeros((n, 10))
+    cnt_t = np.zeros((7, 2, 10))
+    cnt_u = np.zeros((7, 2, 10))
+    cnt_any = np.zeros((7, 2, 10))
+    cnt_slot = np.zeros((7, 2))
+    ALPHA_POS = 2.0
+    ALPHA_ANY = 3.8
+    PRIOR_N = 20.0
+
     for i in range(n):
         tens_gap[i] = cur_t_gap
         units_gap[i] = cur_u_gap
@@ -110,6 +124,14 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
             for k in range(10):
                 tens_roll50[i, k] = rt.count(k) / len(rt)
                 units_roll50[i, k] = ru.count(k) / len(ru)
+
+        w = int(dows[i])
+        pm = int(pms[i])
+        denom = cnt_slot[w, pm] + PRIOR_N
+        dow_t_rate[i] = (cnt_t[w, pm] + ALPHA_POS) / denom
+        dow_u_rate[i] = (cnt_u[w, pm] + ALPHA_POS) / denom
+        dow_any_rate[i] = (cnt_any[w, pm] + ALPHA_ANY) / denom
+
         if not np.isnan(nums[i]):
             val = int(nums[i])
             t_val, u_val = val // 10, val % 10
@@ -120,11 +142,21 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
             hist_t.append(t_val)
             hist_u.append(u_val)
 
+            cnt_t[w, pm, t_val] += 1.0
+            cnt_u[w, pm, u_val] += 1.0
+            cnt_any[w, pm, t_val] += 1.0
+            if u_val != t_val:
+                cnt_any[w, pm, u_val] += 1.0
+            cnt_slot[w, pm] += 1.0
+
     for k in range(10):
         d[f"tens_gap_{k}"] = tens_gap[:, k]
         d[f"units_gap_{k}"] = units_gap[:, k]
         d[f"tens_roll50_{k}"] = tens_roll50[:, k]
         d[f"units_roll50_{k}"] = units_roll50[:, k]
+        d[f"dow_pm_tens_rate_{k}"] = dow_t_rate[:, k]
+        d[f"dow_pm_units_rate_{k}"] = dow_u_rate[:, k]
+        d[f"dow_pm_any_rate_{k}"] = dow_any_rate[:, k]
 
     return d
 
@@ -469,7 +501,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print(f"[OK] SAI 2D predictions updated cleanly.")
+    print(f"[OK] SAI 2D predictions updated with Day-of-Week x AM/PM digit rates.")
 
 
 if __name__ == "__main__":
