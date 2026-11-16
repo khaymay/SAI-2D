@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAI 2D — 5-Model Digit-First Forecast & Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-badge">2D</div>
+      <div>
+        <h1>SAI 2D</h1>
+        <p class="subtitle">5-Model Digit-First Consensus & Win Tracker</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="syncStatus" class="status-pill">Loading...</span>
+      <button id="refreshBtn" class="btn btn-ghost" title="Reload latest JSON from repo">↻ Refresh</button>
+      <button id="settingsBtn" class="btn btn-outline">⚙ GitHub Setup</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Quick Draw Logger -->
+    <section class="card logger-card">
+      <div class="card-header">
+        <h2>Log Session Draw</h2>
+        <span id="latestBadge" class="chip">Latest: —</span>
+      </div>
+      <form id="logDrawForm" class="logger-form">
+        <div class="field">
+          <label for="sessionSelect">Target Session</label>
+          <select id="sessionSelect" required></select>
+        </div>
+        <div class="field">
+          <label for="winningInput">Winning Number (00–99)</label>
+          <input
+            id="winningInput"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]{1,2}"
+            maxlength="2"
+            placeholder="e.g. 65"
+            required
+          />
+        </div>
+        <button type="submit" id="submitDrawBtn" class="btn btn-primary">
+          Commit Draw & Run Models
+        </button>
+      </form>
+      <p id="loggerFeedback" class="feedback-msg"></p>
+    </section>
+
+    <!-- Live Overdue & Positional Drought Radar -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Live Positional Drought Radar</h2>
+        <span class="muted">Consecutive sessions since last hit</span>
+      </div>
+      <div class="radar-tabs">
+        <button class="tab-btn active" data-radar="any_pos_gaps">Any-Position (0–9)</button>
+        <button class="tab-btn" data-radar="tens_gaps">Tens Digit (0–9)</button>
+        <button class="tab-btn" data-radar="units_gaps">Units Digit (0–9)</button>
+        <button class="tab-btn" data-radar="brake_gaps">Mod-10 Brake (0–9)</button>
+      </div>
+      <div id="radarGrid" class="radar-grid"></div>
+    </section>
+
+    <!-- Main Navigation Tabs -->
+    <nav class="view-tabs">
+      <button class="view-tab active" data-view="upcomingView">Upcoming Predictions</button>
+      <button class="view-tab" data-view="historyView">Stored Predictions & Win Log</button>
+      <button class="view-tab" data-view="modelsView">5-Model Leaderboard</button>
+    </nav>
+
+    <!-- View 1: Upcoming Predictions -->
+    <section id="upcomingView" class="view-panel active">
+      <div id="upcomingGrid" class="cards-grid"></div>
+    </section>
+
+    <!-- View 2: Stored Predictions & Win Highlights -->
+    <section id="historyView" class="view-panel">
+      <div class="score-strip" id="scoreSummaryStrip"></div>
+      <div class="filter-bar">
+        <button class="filter-chip active" data-filter="ALL">All</button>
+        <button class="filter-chip" data-filter="EXACT">Gold: Exact Pair</button>
+        <button class="filter-chip" data-filter="REVERSE">Emerald: Reverse (R)</button>
+        <button class="filter-chip" data-filter="ANCHOR_HIT">Blue: Anchor Digit</button>
+        <button class="filter-chip" data-filter="MISS">Miss</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+
+    <!-- View 3: 5-Model Calibration & Weights -->
+    <section id="modelsView" class="view-panel">
+      <div class="card">
+        <div class="card-header">
+          <h2>5-Model Committee Weights & Live Hit Rates</h2>
+          <span class="muted">Auto-calibrated on rolling Anchor Digit accuracy (19.0% baseline)</span>
+        </div>
+        <div id="modelLeaderboard" class="leaderboard-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- GitHub Connection Settings Modal -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>GitHub Direct-Commit Setup</h3>
+        <button id="closeSettingsBtn" class="btn btn-ghost">✕</button>
+      </div>
+      <p class="muted small">
+        Stored locally in your browser only. Required so logging draws or locking picks commits straight to your GitHub repo and triggers the 5-model Action.
+      </p>
+      <form id="settingsForm" class="settings-form">
+        <label>
+          GitHub Username / Owner
+          <input id="ghOwner" type="text" placeholder="e.g. your-username" required />
+        </label>
+        <label>
+          Repository Name
+          <input id="ghRepo" type="text" value="sai-2d" required />
+        </label>
+        <label>
+          Branch
+          <input id="ghBranch" type="text" value="main" required />
+        </label>
+        <label>
+          GitHub Personal Access Token (Fine-grained: Contents Read & Write)
+          <input id="ghToken" type="password" placeholder="github_pat_..." required />
+        </label>
+        <button type="submit" class="btn btn-primary">Save Connection</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
