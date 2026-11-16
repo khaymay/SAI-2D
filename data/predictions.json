@@ -98,7 +98,7 @@
       "date": "11/17/2026",
       "day": "Tue",
       "session": "AM",
-      "locked": true,
+      "locked": false,
       "primary_anchor": {
         "digit": 5,
         "prob": 0.2516,
