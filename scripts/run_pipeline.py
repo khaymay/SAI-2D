@@ -14,6 +14,19 @@ PRED_PATH = "data/predictions.json"
 MODEL_NAMES = ["TabPFN_3.5", "LightGBM", "CatBoost", "L2_Logistic", "Bayesian_Markov"]
 
 
+def format_short_date(date_str: str) -> str:
+    dt = pd.to_datetime(date_str)
+    return f"{dt.day} {dt.strftime('%b')}"
+
+
+def format_day_name(date_str: str) -> str:
+    return pd.to_datetime(date_str).strftime("%A")
+
+
+def format_day_short(date_str: str) -> str:
+    return pd.to_datetime(date_str).strftime("%a")
+
+
 def load_existing_predictions() -> dict:
     if os.path.exists(PRED_PATH):
         with open(PRED_PATH, "r", encoding="utf-8") as f:
@@ -21,7 +34,6 @@ def load_existing_predictions() -> dict:
     return {
         "app_name": "SAI 2D",
         "updated_at": None,
-        "latest_session_id": 0,
         "model_weights": {m: 0.20 for m in MODEL_NAMES},
         "model_stats": {
             m: {"evaluated": 0, "anchor_hits": 0, "exact_hits": 0, "reverse_hits": 0}
@@ -34,7 +46,6 @@ def load_existing_predictions() -> dict:
 
 
 def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFrame:
-    """Automatically appends future weekday AM/PM slots if open rows drop below min_open_slots."""
     open_count = int(df["Winning_Number"].isna().sum())
     if open_count >= min_open_slots:
         return df
@@ -52,7 +63,7 @@ def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFra
         else:
             cur_pm = 0
             cur_date += pd.Timedelta(days=1)
-            while cur_date.weekday() >= 5:  # Skip Sat/Sun
+            while cur_date.weekday() >= 5:
                 cur_date += pd.Timedelta(days=1)
 
         rows.append({
@@ -124,40 +135,33 @@ def compute_drought_radar(hist: pd.DataFrame) -> dict:
     units_s = hist["Winning_Number"].astype(int) % 10
     brake_s = (tens_s + units_s) % 10
 
-    tens_gaps = {
-        str(d): int(last_sid - hist.loc[tens_s == d, "Session_ID"].max())
-        for d in range(10)
-    }
-    units_gaps = {
-        str(d): int(last_sid - hist.loc[units_s == d, "Session_ID"].max())
-        for d in range(10)
-    }
-    brake_gaps = {
-        str(d): int(last_sid - hist.loc[brake_s == d, "Session_ID"].max())
-        for d in range(10)
-    }
-    any_pos_gaps = {
-        str(d): int(last_sid - hist.loc[(tens_s == d) | (units_s == d), "Session_ID"].max())
-        for d in range(10)
-    }
     return {
-        "as_of_session": last_sid,
-        "tens_gaps": tens_gaps,
-        "units_gaps": units_gaps,
-        "brake_gaps": brake_gaps,
-        "any_pos_gaps": any_pos_gaps,
+        "tens_gaps": {
+            str(d): int(last_sid - hist.loc[tens_s == d, "Session_ID"].max())
+            for d in range(10)
+        },
+        "units_gaps": {
+            str(d): int(last_sid - hist.loc[units_s == d, "Session_ID"].max())
+            for d in range(10)
+        },
+        "brake_gaps": {
+            str(d): int(last_sid - hist.loc[brake_s == d, "Session_ID"].max())
+            for d in range(10)
+        },
+        "any_pos_gaps": {
+            str(d): int(last_sid - hist.loc[(tens_s == d) | (units_s == d), "Session_ID"].max())
+            for d in range(10)
+        },
     }
 
 
 def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
-    """Conjugate Dirichlet-Markov + Overdue + Brake + Session Polarity model."""
     n_hist = len(hist)
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
     units = nums % 10
     brakes = (tens + units) % 10
 
-    # Exponentially decayed positional priors (gamma = 0.994)
     weights = 0.994 ** np.arange(n_hist - 1, -1, -1)
     p_t = np.ones(10) * 2.0
     p_u = np.ones(10) * 2.0
@@ -170,7 +174,6 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     p_u /= p_u.sum()
     p_b /= p_b.sum()
 
-    # Session & Day-of-Week affinity
     d_dt = pd.to_datetime(hist["Date"])
     dow_hist = d_dt.dt.dayofweek.values
     is_pm_hist = hist["Is_PM"].values
@@ -181,7 +184,6 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     sub_nums = nums[mask]
     p_exact_dow = (np.bincount(sub_nums, minlength=100) + 0.35) / (len(sub_nums) + 35.0)
 
-    # First-order Markov transition from immediately prior session
     last_num = int(nums[-1])
     last_t, last_u = last_num // 10, last_num % 10
     t_mat = np.ones((10, 10)) * 2.0
@@ -193,7 +195,6 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     u_mat /= u_mat.sum(axis=1, keepdims=True)
     p_markov = np.outer(t_mat[last_t], u_mat[last_u]).flatten()
 
-    # Overdue pressure multiplier
     last_sid = int(hist["Session_ID"].max())
     gap_t = np.array([last_sid - hist.loc[tens == k, "Session_ID"].max() for k in range(10)])
     gap_u = np.array([last_sid - hist.loc[units == k, "Session_ID"].max() for k in range(10)])
@@ -208,7 +209,7 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
         t, u = num // 10, num % 10
         b = (t + u) % 10
         pos_score = (p_t[t] * w_t[t]) * (p_u[u] * w_u[u]) * (p_b[b] * w_b[b] * 10.0)
-        grid[num] = 0.40 * pos_score + 0.30 * p_markov[num] + 0.30 * p_exact_dow[num]
+        grid[num] = 0.35 * pos_score + 0.30 * p_markov[num] + 0.35 * p_exact_dow[num]
 
     grid = np.maximum(grid, 1e-6)
     return grid / grid.sum()
@@ -219,7 +220,6 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
     y_u = y_num % 10
     models = {}
 
-    # 1. LightGBM
     lgb_t = lgb.LGBMClassifier(
         objective="multiclass", num_class=10, n_estimators=120,
         learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
@@ -234,7 +234,6 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
     lgb_u.fit(X_train, y_u)
     models["LightGBM"] = (lgb_t, lgb_u)
 
-    # 2. CatBoost
     cb_t = CatBoostClassifier(
         iterations=250, learning_rate=0.04, depth=4,
         loss_function="MultiClass", random_seed=42, verbose=0
@@ -247,14 +246,12 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
     cb_u.fit(X_train, y_u)
     models["CatBoost"] = (cb_t, cb_u)
 
-    # 3. L2-Logistic Regression
     lr_t = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
     lr_u = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
     lr_t.fit(X_train, y_t)
     lr_u.fit(X_train, y_u)
     models["L2_Logistic"] = (lr_t, lr_u)
 
-    # 4. TabPFN-3.5 (optional cloud API via TABPFN_TOKEN)
     token = os.environ.get("TABPFN_TOKEN", "").strip()
     if token:
         try:
@@ -273,7 +270,6 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
 
 
 def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
-    """Computes P(Digit d appears in Tens OR Units) for d=0..9."""
     mat = p_100.reshape(10, 10)
     p_t = mat.sum(axis=1)
     p_u = mat.sum(axis=0)
@@ -281,10 +277,11 @@ def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
 
 
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
-    """Grades previously locked predictions against newly logged actual winning numbers."""
+    """Automatically archives & grades the last pre-draw forecast once a winning number is logged."""
+    completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
-        int(r["Session_ID"]): int(r["Winning_Number"])
-        for _, r in df[df["Winning_Number"].notna()].iterrows()
+        int(r["Session_ID"]): r
+        for _, r in completed_rows.iterrows()
     }
 
     existing_hist = {int(item["session_id"]): item for item in state.get("history", [])}
@@ -294,7 +291,8 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
     for pred in upcoming_list:
         sid = int(pred["session_id"])
         if sid in completed_map and sid not in existing_hist:
-            actual = completed_map[sid]
+            row = completed_map[sid]
+            actual = int(row["Winning_Number"])
             act_str = f"{actual:02d}"
             rev_str = f"{actual % 10}{actual // 10}"
             act_digits = {actual // 10, actual % 10}
@@ -303,16 +301,15 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
             anchor1 = int(pred["primary_anchor"]["digit"])
             anchor2 = int(pred["secondary_anchor"]["digit"])
 
-            if act_str in top_pairs[:5]:
+            if act_str in top_pairs[:6]:
                 outcome = "EXACT"
-            elif rev_str in top_pairs[:5] and act_str != rev_str:
+            elif rev_str in top_pairs[:6] and act_str != rev_str:
                 outcome = "REVERSE"
             elif anchor1 in act_digits or anchor2 in act_digits:
                 outcome = "ANCHOR_HIT"
             else:
                 outcome = "MISS"
 
-            # Update per-model rolling stats
             for m_name, m_info in pred.get("models", {}).items():
                 if m_name not in state["model_stats"]:
                     state["model_stats"][m_name] = {
@@ -329,6 +326,9 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
                 elif rev_str in m_pairs[:3] and act_str != rev_str:
                     st["reverse_hits"] += 1
 
+            pred["short_date"] = format_short_date(str(row["Date"]))
+            pred["day_full"] = format_day_name(str(row["Date"]))
+            pred["day"] = format_day_short(str(row["Date"]))
             pred["actual"] = act_str
             pred["outcome"] = outcome
             pred["hit_primary_anchor"] = bool(anchor1 in act_digits)
@@ -337,18 +337,14 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
-    # Recompute adaptive model weights from anchor hit rate (smoothed around 19% baseline)
     raw_weights = {}
     for m in MODEL_NAMES:
         st = state["model_stats"].get(m, {"evaluated": 0, "anchor_hits": 0})
-        evals = st["evaluated"]
-        hits = st["anchor_hits"]
-        # Bayesian smoothed hit rate with 20 pseudo-observations at 0.19 baseline
-        smoothed_rate = (hits + 20 * 0.19) / (evals + 20.0)
+        smoothed_rate = (st["anchor_hits"] + 20 * 0.19) / (st["evaluated"] + 20.0)
         raw_weights[m] = smoothed_rate ** 2
     total_w = sum(raw_weights.values())
     state["model_weights"] = {m: round(raw_weights[m] / total_w, 4) for m in MODEL_NAMES}
-    state["history"] = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:120]
+    state["history"] = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:150]
     state["upcoming"] = still_upcoming
     return state
 
@@ -361,7 +357,6 @@ def main():
 
     hist = df[df["Winning_Number"].notna()].copy()
     hist["Winning_Number"] = hist["Winning_Number"].astype(int)
-    state["latest_session_id"] = int(hist["Session_ID"].max())
     state["drought_radar"] = compute_drought_radar(hist)
 
     feat_df = build_features(df)
@@ -381,45 +376,29 @@ def main():
     w_sum = sum(active_weights.values())
     active_weights = {m: w / w_sum for m, w in active_weights.items()}
 
-    # Preserve locked predictions if user manually locked an upcoming slot, otherwise refresh
-    locked_map = {
-        int(p["session_id"]): p
-        for p in state.get("upcoming", [])
-        if p.get("locked", False)
-    }
-
     sim_df = df.copy()
     open_sids = sim_df.loc[sim_df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:8]
     new_upcoming = []
 
     for sid in open_sids:
-        if sid in locked_map:
-            new_upcoming.append(locked_map[sid])
-            top_pair_val = int(locked_map[sid]["top_pairs"][0]["pair"])
-            sim_df.loc[sim_df["Session_ID"] == sid, "Winning_Number"] = float(top_pair_val)
-            continue
-
         step_feats = build_features(sim_df)
         row_mask = step_feats["Session_ID"] == sid
         X_next = step_feats.loc[row_mask, feature_cols]
         target_row = sim_df.loc[row_mask].iloc[0]
 
         sim_hist = sim_df[sim_df["Winning_Number"].notna()].copy()
-        model_grids = {}
-        model_grids["Bayesian_Markov"] = predict_bayesian_markov(sim_hist, target_row)
+        model_grids = {"Bayesian_Markov": predict_bayesian_markov(sim_hist, target_row)}
 
         for m_name, (clf_t, clf_u) in ml_models.items():
             pt = clf_t.predict_proba(X_next)[0]
             pu = clf_u.predict_proba(X_next)[0]
             model_grids[m_name] = np.outer(pt, pu).flatten()
 
-        # Weighted consensus 100-cell probability grid
         p_consensus = np.zeros(100)
         for m_name, grid in model_grids.items():
             p_consensus += active_weights[m_name] * grid
         p_consensus /= p_consensus.sum()
 
-        # Digit-First Funnel: extract Consensus Anchor Digits & model agreement
         p_anchor_consensus = grid_to_anchor_probs(p_consensus)
         ranked_digits = np.argsort(p_anchor_consensus)[::-1]
         d1, d2 = int(ranked_digits[0]), int(ranked_digits[1])
@@ -441,7 +420,6 @@ def main():
                 "top_pairs": m_top_pairs,
             }
 
-        # Filter 00-99 pairs strictly through Primary & Secondary Anchor Digits
         anchor_filtered_pairs = []
         for idx in np.argsort(p_consensus)[::-1]:
             t, u = idx // 10, idx % 10
@@ -460,28 +438,20 @@ def main():
             if len(anchor_filtered_pairs) >= 6:
                 break
 
-        # 19-number wheel for Primary Anchor Digit d1
-        wheel_19 = sorted({
-            f"{d1}{x}" for x in range(10)
-        } | {
-            f"{x}{d1}" for x in range(10)
-        })
-
-        # Propagate top consensus pair for multi-step lags
         sim_df.loc[row_mask, "Winning_Number"] = float(int(anchor_filtered_pairs[0]["pair"]))
 
-        day_name = pd.to_datetime(target_row["Date"]).strftime("%a")
+        raw_date = str(target_row["Date"])
         new_upcoming.append({
             "session_id": sid,
-            "date": str(target_row["Date"]),
-            "day": day_name,
+            "date": raw_date,
+            "short_date": format_short_date(raw_date),
+            "day": format_day_short(raw_date),
+            "day_full": format_day_name(raw_date),
             "session": "PM" if int(target_row["Is_PM"]) == 1 else "AM",
-            "locked": False,
             "primary_anchor": {
                 "digit": d1,
                 "prob": round(float(p_anchor_consensus[d1]), 4),
                 "votes": f"{d1_votes}/{len(model_grids)}",
-                "wheel_19": wheel_19,
             },
             "secondary_anchor": {
                 "digit": d2,
@@ -494,11 +464,12 @@ def main():
         })
 
     state["upcoming"] = new_upcoming
-    state["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    state["updated_at"] = datetime.now(timezone.utc).strftime("%d %b • %H:%M UTC")
+    state.pop("latest_session_id", None)
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print(f"[OK] SAI 2D predictions updated through Session {open_sids[-1]}.")
+    print(f"[OK] SAI 2D predictions updated cleanly.")
 
 
 if __name__ == "__main__":
