@@ -17,7 +17,7 @@
     </div>
     <div class="topbar-actions">
       <span id="syncStatus" class="status-pill">Loading...</span>
-      <button id="refreshBtn" class="btn btn-ghost" title="Reload latest JSON from repo">↻ Refresh</button>
+      <button id="refreshBtn" class="btn btn-ghost" title="Reload latest data">↻ Refresh</button>
       <button id="settingsBtn" class="btn btn-outline">⚙ GitHub Setup</button>
     </div>
   </header>
@@ -26,12 +26,12 @@
     <!-- Quick Draw Logger -->
     <section class="card logger-card">
       <div class="card-header">
-        <h2>Log Session Draw</h2>
+        <h2>Log Draw Result</h2>
         <span id="latestBadge" class="chip">Latest: —</span>
       </div>
       <form id="logDrawForm" class="logger-form">
         <div class="field">
-          <label for="sessionSelect">Target Session</label>
+          <label for="sessionSelect">Date & Session</label>
           <select id="sessionSelect" required></select>
         </div>
         <div class="field">
@@ -47,17 +47,26 @@
           />
         </div>
         <button type="submit" id="submitDrawBtn" class="btn btn-primary">
-          Commit Draw & Run Models
+          Save Result & Update Picks
         </button>
       </form>
       <p id="loggerFeedback" class="feedback-msg"></p>
+    </section>
+
+    <!-- Current Week Winning Numbers Strip -->
+    <section class="card">
+      <div class="card-header">
+        <h2>This Week's Winning Numbers</h2>
+        <span id="weekRangeLabel" class="muted">Mon – Fri</span>
+      </div>
+      <div id="currentWeekGrid" class="week-strip-grid"></div>
     </section>
 
     <!-- Live Overdue & Positional Drought Radar -->
     <section class="card">
       <div class="card-header">
         <h2>Live Positional Drought Radar</h2>
-        <span class="muted">Consecutive sessions since last hit</span>
+        <span class="muted">Consecutive draws since last hit</span>
       </div>
       <div class="radar-tabs">
         <button class="tab-btn active" data-radar="any_pos_gaps">Any-Position (0–9)</button>
@@ -71,7 +80,8 @@
     <!-- Main Navigation Tabs -->
     <nav class="view-tabs">
       <button class="view-tab active" data-view="upcomingView">Upcoming Predictions</button>
-      <button class="view-tab" data-view="historyView">Stored Predictions & Win Log</button>
+      <button class="view-tab" data-view="winningHistoryView">Winning History</button>
+      <button class="view-tab" data-view="winLogView">Prediction & Win Log</button>
       <button class="view-tab" data-view="modelsView">5-Model Leaderboard</button>
     </nav>
 
@@ -80,8 +90,23 @@
       <div id="upcomingGrid" class="cards-grid"></div>
     </section>
 
-    <!-- View 2: Stored Predictions & Win Highlights -->
-    <section id="historyView" class="view-panel">
+    <!-- View 2: Winning History (Month View Default + Year Selector) -->
+    <section id="winningHistoryView" class="view-panel">
+      <div class="card">
+        <div class="card-header">
+          <h2>Winning Number Archive</h2>
+          <div class="history-controls">
+            <label for="historyYearSelect" class="muted small">Year:</label>
+            <select id="historyYearSelect" class="compact-select"></select>
+          </div>
+        </div>
+        <div id="monthPills" class="month-pills"></div>
+        <div id="winningMonthGrid" class="month-weeks-container"></div>
+      </div>
+    </section>
+
+    <!-- View 3: Prediction & Win Log -->
+    <section id="winLogView" class="view-panel">
       <div class="score-strip" id="scoreSummaryStrip"></div>
       <div class="filter-bar">
         <button class="filter-chip active" data-filter="ALL">All</button>
@@ -93,7 +118,7 @@
       <div id="historyList" class="history-list"></div>
     </section>
 
-    <!-- View 3: 5-Model Calibration & Weights -->
+    <!-- View 4: 5-Model Calibration & Weights -->
     <section id="modelsView" class="view-panel">
       <div class="card">
         <div class="card-header">
@@ -113,12 +138,12 @@
         <button id="closeSettingsBtn" class="btn btn-ghost">✕</button>
       </div>
       <p class="muted small">
-        Stored locally in your browser only. Required so logging draws or locking picks commits straight to your GitHub repo and triggers the 5-model Action.
+        Stored locally in your browser only. Required so logging draws commits straight to your GitHub repo and triggers the 5-model Action.
       </p>
       <form id="settingsForm" class="settings-form">
         <label>
           GitHub Username / Owner
-          <input id="ghOwner" type="text" placeholder="e.g. your-username" required />
+          <input id="ghOwner" type="text" placeholder="e.g. khaymay" required />
         </label>
         <label>
           Repository Name
