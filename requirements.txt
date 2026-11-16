@@ -1,0 +1,6 @@
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.4.0
+lightgbm>=4.3.0
+catboost>=1.2.5
+tabpfn-client>=0.7.1
