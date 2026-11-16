@@ -47,6 +47,7 @@ jobs:
           git add data/draws.csv data/predictions.json
           if ! git diff --cached --quiet; then
             git commit -m "chore: update SAI 2D predictions [skip ci]"
+            git pull --rebase origin main
             git push
           else
             echo "No changes to commit."
