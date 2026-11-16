@@ -1,0 +1,1355 @@
+{
+  "app_name": "SAI 2D",
+  "updated_at": "2026-11-16 15:46 UTC",
+  "latest_session_id": 1855,
+  "model_weights": {
+    "TabPFN_3.5": 0.2,
+    "LightGBM": 0.2,
+    "CatBoost": 0.2,
+    "L2_Logistic": 0.2,
+    "Bayesian_Markov": 0.2
+  },
+  "model_stats": {
+    "TabPFN_3.5": {
+      "evaluated": 0,
+      "anchor_hits": 0,
+      "exact_hits": 0,
+      "reverse_hits": 0
+    },
+    "LightGBM": {
+      "evaluated": 0,
+      "anchor_hits": 0,
+      "exact_hits": 0,
+      "reverse_hits": 0
+    },
+    "CatBoost": {
+      "evaluated": 0,
+      "anchor_hits": 0,
+      "exact_hits": 0,
+      "reverse_hits": 0
+    },
+    "L2_Logistic": {
+      "evaluated": 0,
+      "anchor_hits": 0,
+      "exact_hits": 0,
+      "reverse_hits": 0
+    },
+    "Bayesian_Markov": {
+      "evaluated": 0,
+      "anchor_hits": 0,
+      "exact_hits": 0,
+      "reverse_hits": 0
+    }
+  },
+  "drought_radar": {
+    "as_of_session": 1855,
+    "tens_gaps": {
+      "0": 4,
+      "1": 6,
+      "2": 7,
+      "3": 0,
+      "4": 29,
+      "5": 13,
+      "6": 1,
+      "7": 10,
+      "8": 2,
+      "9": 14
+    },
+    "units_gaps": {
+      "0": 2,
+      "1": 0,
+      "2": 3,
+      "3": 6,
+      "4": 7,
+      "5": 1,
+      "6": 4,
+      "7": 8,
+      "8": 20,
+      "9": 27
+    },
+    "brake_gaps": {
+      "0": 5,
+      "1": 1,
+      "2": 17,
+      "3": 11,
+      "4": 0,
+      "5": 3,
+      "6": 4,
+      "7": 27,
+      "8": 2,
+      "9": 14
+    },
+    "any_pos_gaps": {
+      "0": 2,
+      "1": 0,
+      "2": 3,
+      "3": 0,
+      "4": 7,
+      "5": 1,
+      "6": 1,
+      "7": 8,
+      "8": 2,
+      "9": 14
+    }
+  },
+  "upcoming": [
+    {
+      "session_id": 1856,
+      "date": "11/17/2026",
+      "day": "Tue",
+      "session": "AM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 5,
+        "prob": 0.2516,
+        "votes": "3/5",
+        "wheel_19": [
+          "05",
+          "15",
+          "25",
+          "35",
+          "45",
+          "50",
+          "51",
+          "52",
+          "53",
+          "54",
+          "55",
+          "56",
+          "57",
+          "58",
+          "59",
+          "65",
+          "75",
+          "85",
+          "95"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 8,
+        "prob": 0.2061,
+        "votes": "0/5"
+      },
+      "intersection_pairs": [
+        "58",
+        "85"
+      ],
+      "top_pairs": [
+        {
+          "pair": "54",
+          "reverse": "45",
+          "prob": 0.0202,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "55",
+          "reverse": "55",
+          "prob": 0.0193,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "85",
+          "reverse": "58",
+          "prob": 0.0173,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "65",
+          "reverse": "56",
+          "prob": 0.0169,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "84",
+          "reverse": "48",
+          "prob": 0.0168,
+          "contains_primary": false,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "05",
+          "reverse": "50",
+          "prob": 0.0164,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 0,
+          "backup_digit": 7,
+          "anchor_prob": 0.2,
+          "top_pairs": [
+            "98",
+            "68",
+            "08"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 5,
+          "backup_digit": 7,
+          "anchor_prob": 0.2968,
+          "top_pairs": [
+            "85",
+            "65",
+            "05"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 5,
+          "backup_digit": 4,
+          "anchor_prob": 0.2536,
+          "top_pairs": [
+            "54",
+            "64",
+            "04"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 5,
+          "backup_digit": 4,
+          "anchor_prob": 0.3377,
+          "top_pairs": [
+            "54",
+            "55",
+            "84"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 2,
+          "backup_digit": 4,
+          "anchor_prob": 0.2644,
+          "top_pairs": [
+            "52",
+            "02",
+            "12"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1857,
+      "date": "11/17/2026",
+      "day": "Tue",
+      "session": "PM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 1,
+        "prob": 0.2337,
+        "votes": "1/5",
+        "wheel_19": [
+          "01",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "21",
+          "31",
+          "41",
+          "51",
+          "61",
+          "71",
+          "81",
+          "91"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 7,
+        "prob": 0.2301,
+        "votes": "3/5"
+      },
+      "intersection_pairs": [
+        "17",
+        "71"
+      ],
+      "top_pairs": [
+        {
+          "pair": "17",
+          "reverse": "71",
+          "prob": 0.0191,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "57",
+          "reverse": "75",
+          "prob": 0.0165,
+          "contains_primary": false,
+          "supporters": [
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "77",
+          "reverse": "77",
+          "prob": 0.0161,
+          "contains_primary": false,
+          "supporters": [
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "19",
+          "reverse": "91",
+          "prob": 0.016,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "11",
+          "reverse": "11",
+          "prob": 0.0154,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "51",
+          "reverse": "15",
+          "prob": 0.0147,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 0,
+          "backup_digit": 3,
+          "anchor_prob": 0.2154,
+          "top_pairs": [
+            "68",
+            "14",
+            "20"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 1,
+          "backup_digit": 8,
+          "anchor_prob": 0.3025,
+          "top_pairs": [
+            "18",
+            "11",
+            "19"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 7,
+          "backup_digit": 5,
+          "anchor_prob": 0.2371,
+          "top_pairs": [
+            "54",
+            "57",
+            "74"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 7,
+          "backup_digit": 5,
+          "anchor_prob": 0.2818,
+          "top_pairs": [
+            "57",
+            "17",
+            "59"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 2,
+          "backup_digit": 7,
+          "anchor_prob": 0.2582,
+          "top_pairs": [
+            "22",
+            "72",
+            "92"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1858,
+      "date": "11/18/2026",
+      "day": "Wed",
+      "session": "AM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 7,
+        "prob": 0.2532,
+        "votes": "3/5",
+        "wheel_19": [
+          "07",
+          "17",
+          "27",
+          "37",
+          "47",
+          "57",
+          "67",
+          "70",
+          "71",
+          "72",
+          "73",
+          "74",
+          "75",
+          "76",
+          "77",
+          "78",
+          "79",
+          "87",
+          "97"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 1,
+        "prob": 0.2293,
+        "votes": "4/5"
+      },
+      "intersection_pairs": [
+        "71",
+        "17"
+      ],
+      "top_pairs": [
+        {
+          "pair": "17",
+          "reverse": "71",
+          "prob": 0.0248,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "15",
+          "reverse": "51",
+          "prob": 0.0235,
+          "contains_primary": false,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "67",
+          "reverse": "76",
+          "prob": 0.0207,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "77",
+          "reverse": "77",
+          "prob": 0.0163,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "87",
+          "reverse": "78",
+          "prob": 0.0154,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "11",
+          "reverse": "11",
+          "prob": 0.0152,
+          "contains_primary": false,
+          "supporters": [
+            "LightGBM",
+            "CatBoost"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 7,
+          "backup_digit": 1,
+          "anchor_prob": 0.2136,
+          "top_pairs": [
+            "87",
+            "18",
+            "77"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 1,
+          "backup_digit": 7,
+          "anchor_prob": 0.3017,
+          "top_pairs": [
+            "67",
+            "17",
+            "65"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 1,
+          "backup_digit": 5,
+          "anchor_prob": 0.2355,
+          "top_pairs": [
+            "17",
+            "57",
+            "15"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 5,
+          "backup_digit": 1,
+          "anchor_prob": 0.3527,
+          "top_pairs": [
+            "15",
+            "17",
+            "55"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 7,
+          "backup_digit": 8,
+          "anchor_prob": 0.2721,
+          "top_pairs": [
+            "78",
+            "73",
+            "98"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1859,
+      "date": "11/18/2026",
+      "day": "Wed",
+      "session": "PM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 9,
+        "prob": 0.2148,
+        "votes": "1/5",
+        "wheel_19": [
+          "09",
+          "19",
+          "29",
+          "39",
+          "49",
+          "59",
+          "69",
+          "79",
+          "89",
+          "90",
+          "91",
+          "92",
+          "93",
+          "94",
+          "95",
+          "96",
+          "97",
+          "98",
+          "99"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 5,
+        "prob": 0.2112,
+        "votes": "1/5"
+      },
+      "intersection_pairs": [
+        "95",
+        "59"
+      ],
+      "top_pairs": [
+        {
+          "pair": "15",
+          "reverse": "51",
+          "prob": 0.0242,
+          "contains_primary": false,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "19",
+          "reverse": "91",
+          "prob": 0.0235,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "25",
+          "reverse": "52",
+          "prob": 0.0197,
+          "contains_primary": false,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "29",
+          "reverse": "92",
+          "prob": 0.0189,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "75",
+          "reverse": "57",
+          "prob": 0.0147,
+          "contains_primary": false,
+          "supporters": [
+            "Bayesian_Markov",
+            "L2_Logistic",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "98",
+          "reverse": "89",
+          "prob": 0.0144,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 7,
+          "backup_digit": 1,
+          "anchor_prob": 0.2195,
+          "top_pairs": [
+            "17",
+            "98",
+            "13"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 9,
+          "backup_digit": 1,
+          "anchor_prob": 0.3128,
+          "top_pairs": [
+            "19",
+            "29",
+            "15"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 0,
+          "backup_digit": 8,
+          "anchor_prob": 0.2096,
+          "top_pairs": [
+            "14",
+            "15",
+            "24"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 5,
+          "backup_digit": 1,
+          "anchor_prob": 0.3086,
+          "top_pairs": [
+            "15",
+            "14",
+            "85"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 7,
+          "backup_digit": 2,
+          "anchor_prob": 0.282,
+          "top_pairs": [
+            "78",
+            "72",
+            "73"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1860,
+      "date": "11/19/2026",
+      "day": "Thu",
+      "session": "AM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 8,
+        "prob": 0.2322,
+        "votes": "1/5",
+        "wheel_19": [
+          "08",
+          "18",
+          "28",
+          "38",
+          "48",
+          "58",
+          "68",
+          "78",
+          "80",
+          "81",
+          "82",
+          "83",
+          "84",
+          "85",
+          "86",
+          "87",
+          "88",
+          "89",
+          "98"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 7,
+        "prob": 0.2039,
+        "votes": "2/5"
+      },
+      "intersection_pairs": [
+        "87",
+        "78"
+      ],
+      "top_pairs": [
+        {
+          "pair": "78",
+          "reverse": "87",
+          "prob": 0.0208,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "L2_Logistic",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "18",
+          "reverse": "81",
+          "prob": 0.0174,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "74",
+          "reverse": "47",
+          "prob": 0.0157,
+          "contains_primary": false,
+          "supporters": [
+            "Bayesian_Markov",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "98",
+          "reverse": "89",
+          "prob": 0.0147,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "28",
+          "reverse": "82",
+          "prob": 0.0146,
+          "contains_primary": true,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "84",
+          "reverse": "48",
+          "prob": 0.0144,
+          "contains_primary": true,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 7,
+          "backup_digit": 5,
+          "anchor_prob": 0.2089,
+          "top_pairs": [
+            "78",
+            "75",
+            "15"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 9,
+          "backup_digit": 5,
+          "anchor_prob": 0.2904,
+          "top_pairs": [
+            "19",
+            "18",
+            "59"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 1,
+          "backup_digit": 0,
+          "anchor_prob": 0.2157,
+          "top_pairs": [
+            "15",
+            "25",
+            "18"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 8,
+          "backup_digit": 1,
+          "anchor_prob": 0.3224,
+          "top_pairs": [
+            "84",
+            "85",
+            "88"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 7,
+          "backup_digit": 2,
+          "anchor_prob": 0.2869,
+          "top_pairs": [
+            "78",
+            "72",
+            "73"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1861,
+      "date": "11/19/2026",
+      "day": "Thu",
+      "session": "PM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 1,
+        "prob": 0.2152,
+        "votes": "2/5",
+        "wheel_19": [
+          "01",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "21",
+          "31",
+          "41",
+          "51",
+          "61",
+          "71",
+          "81",
+          "91"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 4,
+        "prob": 0.2073,
+        "votes": "2/5"
+      },
+      "intersection_pairs": [
+        "14",
+        "41"
+      ],
+      "top_pairs": [
+        {
+          "pair": "14",
+          "reverse": "41",
+          "prob": 0.0161,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "10",
+          "reverse": "01",
+          "prob": 0.0153,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "17",
+          "reverse": "71",
+          "prob": 0.0148,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "19",
+          "reverse": "91",
+          "prob": 0.0147,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "L2_Logistic",
+            "TabPFN_3.5"
+          ]
+        },
+        {
+          "pair": "15",
+          "reverse": "51",
+          "prob": 0.014,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "34",
+          "reverse": "43",
+          "prob": 0.0131,
+          "contains_primary": false,
+          "supporters": []
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 0,
+          "backup_digit": 7,
+          "anchor_prob": 0.2042,
+          "top_pairs": [
+            "53",
+            "78",
+            "17"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 1,
+          "backup_digit": 2,
+          "anchor_prob": 0.2511,
+          "top_pairs": [
+            "39",
+            "30",
+            "29"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 0,
+          "backup_digit": 4,
+          "anchor_prob": 0.2339,
+          "top_pairs": [
+            "14",
+            "17",
+            "10"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 1,
+          "backup_digit": 4,
+          "anchor_prob": 0.2566,
+          "top_pairs": [
+            "84",
+            "87",
+            "14"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 9,
+          "backup_digit": 2,
+          "anchor_prob": 0.2208,
+          "top_pairs": [
+            "42",
+            "49",
+            "43"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1862,
+      "date": "11/20/2026",
+      "day": "Fri",
+      "session": "AM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 6,
+        "prob": 0.2175,
+        "votes": "2/5",
+        "wheel_19": [
+          "06",
+          "16",
+          "26",
+          "36",
+          "46",
+          "56",
+          "60",
+          "61",
+          "62",
+          "63",
+          "64",
+          "65",
+          "66",
+          "67",
+          "68",
+          "69",
+          "76",
+          "86",
+          "96"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 8,
+        "prob": 0.2154,
+        "votes": "2/5"
+      },
+      "intersection_pairs": [
+        "68",
+        "86"
+      ],
+      "top_pairs": [
+        {
+          "pair": "68",
+          "reverse": "86",
+          "prob": 0.0186,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "64",
+          "reverse": "46",
+          "prob": 0.0175,
+          "contains_primary": true,
+          "supporters": []
+        },
+        {
+          "pair": "65",
+          "reverse": "56",
+          "prob": 0.0169,
+          "contains_primary": true,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "28",
+          "reverse": "82",
+          "prob": 0.0153,
+          "contains_primary": false,
+          "supporters": [
+            "LightGBM",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "67",
+          "reverse": "76",
+          "prob": 0.0151,
+          "contains_primary": true,
+          "supporters": [
+            "CatBoost"
+          ]
+        },
+        {
+          "pair": "61",
+          "reverse": "16",
+          "prob": 0.0144,
+          "contains_primary": true,
+          "supporters": []
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 3,
+          "backup_digit": 5,
+          "anchor_prob": 0.2038,
+          "top_pairs": [
+            "98",
+            "50",
+            "71"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 8,
+          "backup_digit": 6,
+          "anchor_prob": 0.2812,
+          "top_pairs": [
+            "68",
+            "28",
+            "38"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 7,
+          "backup_digit": 6,
+          "anchor_prob": 0.2169,
+          "top_pairs": [
+            "17",
+            "67",
+            "10"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 8,
+          "backup_digit": 4,
+          "anchor_prob": 0.2759,
+          "top_pairs": [
+            "85",
+            "84",
+            "65"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 9,
+          "backup_digit": 2,
+          "anchor_prob": 0.2243,
+          "top_pairs": [
+            "49",
+            "42",
+            "99"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1863,
+      "date": "11/20/2026",
+      "day": "Fri",
+      "session": "PM",
+      "locked": false,
+      "primary_anchor": {
+        "digit": 4,
+        "prob": 0.2194,
+        "votes": "3/5",
+        "wheel_19": [
+          "04",
+          "14",
+          "24",
+          "34",
+          "40",
+          "41",
+          "42",
+          "43",
+          "44",
+          "45",
+          "46",
+          "47",
+          "48",
+          "49",
+          "54",
+          "64",
+          "74",
+          "84",
+          "94"
+        ]
+      },
+      "secondary_anchor": {
+        "digit": 2,
+        "prob": 0.2003,
+        "votes": "2/5"
+      },
+      "intersection_pairs": [
+        "42",
+        "24"
+      ],
+      "top_pairs": [
+        {
+          "pair": "84",
+          "reverse": "48",
+          "prob": 0.0167,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "24",
+          "reverse": "42",
+          "prob": 0.0159,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "04",
+          "reverse": "40",
+          "prob": 0.0155,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "64",
+          "reverse": "46",
+          "prob": 0.0141,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "14",
+          "reverse": "41",
+          "prob": 0.0141,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "74",
+          "reverse": "47",
+          "prob": 0.0137,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 1,
+          "backup_digit": 0,
+          "anchor_prob": 0.2066,
+          "top_pairs": [
+            "16",
+            "13",
+            "59"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 4,
+          "backup_digit": 2,
+          "anchor_prob": 0.2648,
+          "top_pairs": [
+            "84",
+            "24",
+            "74"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 4,
+          "backup_digit": 5,
+          "anchor_prob": 0.2223,
+          "top_pairs": [
+            "04",
+            "05",
+            "34"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 4,
+          "backup_digit": 5,
+          "anchor_prob": 0.2409,
+          "top_pairs": [
+            "84",
+            "85",
+            "89"
+          ]
+        },
+        "TabPFN_3.5": {
+          "anchor_digit": 9,
+          "backup_digit": 2,
+          "anchor_prob": 0.2214,
+          "top_pairs": [
+            "49",
+            "42",
+            "99"
+          ]
+        }
+      }
+    }
+  ],
+  "history": []
+}
