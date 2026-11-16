@@ -12,13 +12,25 @@
       <div class="logo-badge">2D</div>
       <div>
         <h1>SAI 2D</h1>
-        <p class="subtitle">5-Model Digit-First Consensus & Win Tracker</p>
+        <p class="subtitle">5-Model Consensus & Tracker</p>
       </div>
     </div>
     <div class="topbar-actions">
-      <span id="syncStatus" class="status-pill">Loading...</span>
-      <button id="refreshBtn" class="btn btn-ghost" title="Reload latest data">↻ Refresh</button>
-      <button id="settingsBtn" class="btn btn-outline">⚙ GitHub Setup</button>
+      <span id="syncStatus" class="status-pill" title="Yangon Time (MMT)">Syncing...</span>
+      <button id="refreshBtn" class="icon-btn" title="Refresh data" aria-label="Refresh">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+          <path d="M16 16h5v5"/>
+        </svg>
+      </button>
+      <button id="settingsBtn" class="icon-btn" title="GitHub Setup" aria-label="GitHub Setup">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -47,7 +59,7 @@
           />
         </div>
         <button type="submit" id="submitDrawBtn" class="btn btn-primary">
-          Save Result & Update Picks
+          Save & Update Picks
         </button>
       </form>
       <p id="loggerFeedback" class="feedback-msg"></p>
@@ -56,8 +68,14 @@
     <!-- Current Week Winning Numbers Strip -->
     <section class="card">
       <div class="card-header">
-        <h2>This Week's Winning Numbers</h2>
-        <span id="weekRangeLabel" class="muted">Mon – Fri</span>
+        <div>
+          <h2>This Week's Winning Numbers</h2>
+          <span id="weekRangeLabel" class="muted small">Mon – Fri</span>
+        </div>
+        <div class="color-legend">
+          <span class="legend-item"><i class="dot-am"></i>Morning</span>
+          <span class="legend-item"><i class="dot-pm"></i>Evening</span>
+        </div>
       </div>
       <div id="currentWeekGrid" class="week-strip-grid"></div>
     </section>
@@ -65,24 +83,24 @@
     <!-- Live Overdue & Positional Drought Radar -->
     <section class="card">
       <div class="card-header">
-        <h2>Live Positional Drought Radar</h2>
-        <span class="muted">Consecutive draws since last hit</span>
+        <h2>Positional Drought Radar</h2>
+        <span class="muted small">Draws since last hit</span>
       </div>
       <div class="radar-tabs">
-        <button class="tab-btn active" data-radar="any_pos_gaps">Any-Position (0–9)</button>
-        <button class="tab-btn" data-radar="tens_gaps">Tens Digit (0–9)</button>
-        <button class="tab-btn" data-radar="units_gaps">Units Digit (0–9)</button>
-        <button class="tab-btn" data-radar="brake_gaps">Mod-10 Brake (0–9)</button>
+        <button class="tab-btn active" data-radar="any_pos_gaps">Any-Position</button>
+        <button class="tab-btn" data-radar="tens_gaps">Tens (0–9)</button>
+        <button class="tab-btn" data-radar="units_gaps">Units (0–9)</button>
+        <button class="tab-btn" data-radar="brake_gaps">Brake (0–9)</button>
       </div>
       <div id="radarGrid" class="radar-grid"></div>
     </section>
 
     <!-- Main Navigation Tabs -->
     <nav class="view-tabs">
-      <button class="view-tab active" data-view="upcomingView">Upcoming Predictions</button>
+      <button class="view-tab active" data-view="upcomingView">Upcoming Picks</button>
       <button class="view-tab" data-view="winningHistoryView">Winning History</button>
-      <button class="view-tab" data-view="winLogView">Prediction & Win Log</button>
-      <button class="view-tab" data-view="modelsView">5-Model Leaderboard</button>
+      <button class="view-tab" data-view="winLogView">Win Log</button>
+      <button class="view-tab" data-view="modelsView">5-Model Weights</button>
     </nav>
 
     <!-- View 1: Upcoming Predictions -->
@@ -90,18 +108,23 @@
       <div id="upcomingGrid" class="cards-grid"></div>
     </section>
 
-    <!-- View 2: Winning History (Month View Default + Year Selector) -->
+    <!-- View 2: Winning History (Compact Week-per-Card, 1st -> 31st, Color-Coded AM/PM) -->
     <section id="winningHistoryView" class="view-panel">
       <div class="card">
         <div class="card-header">
-          <h2>Winning Number Archive</h2>
+          <div class="history-title-group">
+            <h2>Winning Archive</h2>
+            <div class="color-legend">
+              <span class="legend-item"><i class="dot-am"></i>Morning</span>
+              <span class="legend-item"><i class="dot-pm"></i>Evening</span>
+            </div>
+          </div>
           <div class="history-controls">
-            <label for="historyYearSelect" class="muted small">Year:</label>
-            <select id="historyYearSelect" class="compact-select"></select>
+            <select id="historyYearSelect" class="compact-select" aria-label="Select Year"></select>
           </div>
         </div>
         <div id="monthPills" class="month-pills"></div>
-        <div id="winningMonthGrid" class="month-weeks-container"></div>
+        <div id="winningMonthGrid" class="compact-weeks-grid"></div>
       </div>
     </section>
 
@@ -110,7 +133,7 @@
       <div class="score-strip" id="scoreSummaryStrip"></div>
       <div class="filter-bar">
         <button class="filter-chip active" data-filter="ALL">All</button>
-        <button class="filter-chip" data-filter="EXACT">Gold: Exact Pair</button>
+        <button class="filter-chip" data-filter="EXACT">Gold: Exact</button>
         <button class="filter-chip" data-filter="REVERSE">Emerald: Reverse (R)</button>
         <button class="filter-chip" data-filter="ANCHOR_HIT">Blue: Anchor Digit</button>
         <button class="filter-chip" data-filter="MISS">Miss</button>
@@ -122,8 +145,8 @@
     <section id="modelsView" class="view-panel">
       <div class="card">
         <div class="card-header">
-          <h2>5-Model Committee Weights & Live Hit Rates</h2>
-          <span class="muted">Auto-calibrated on rolling Anchor Digit accuracy (19.0% baseline)</span>
+          <h2>5-Model Committee Weights</h2>
+          <span class="muted small">Auto-calibrated vs. 19.0% anchor baseline</span>
         </div>
         <div id="modelLeaderboard" class="leaderboard-grid"></div>
       </div>
@@ -135,7 +158,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <h3>GitHub Direct-Commit Setup</h3>
-        <button id="closeSettingsBtn" class="btn btn-ghost">✕</button>
+        <button id="closeSettingsBtn" class="icon-btn" aria-label="Close">✕</button>
       </div>
       <p class="muted small">
         Stored locally in your browser only. Required so logging draws commits straight to your GitHub repo and triggers the 5-model Action.
