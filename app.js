@@ -26,6 +26,26 @@ function saveConfig(cfg) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
 }
 
+function formatYangonTimestamp(isoOrFallback) {
+  if (!isoOrFallback) return "Ready (MMT)";
+  const dt = new Date(isoOrFallback);
+  if (Number.isNaN(dt.getTime())) {
+    return String(isoOrFallback).replace("UTC", "MMT");
+  }
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Yangon",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(dt);
+
+  const get = (type) => (parts.find((p) => p.type === type) || {}).value || "";
+  const dayPeriod = get("dayPeriod").toUpperCase();
+  return `${get("day")} ${get("month")} • ${get("hour")}:${get("minute")} ${dayPeriod} MMT`;
+}
+
 function parseDateParts(dateStr) {
   const [m, d, y] = dateStr.split("/").map((x) => parseInt(x, 10));
   const dt = new Date(y, m - 1, d);
@@ -37,7 +57,7 @@ function parseDateParts(dateStr) {
     shortDate: `${d} ${MONTHS_SHORT[m - 1]}`,
     dayShort: DAYS_SHORT[dt.getDay()],
     dayFull: DAYS_FULL[dt.getDay()],
-    dow: dt.getDay(), // 1=Mon ... 5=Fri
+    dow: dt.getDay(),
   };
 }
 
@@ -94,13 +114,14 @@ async function fetchRepoData() {
 
     if (predRes.ok) {
       STATE.predictions = await predRes.json();
-      syncEl.textContent = `Updated: ${STATE.predictions.updated_at || "Ready"}`;
+      const stamp = STATE.predictions.updated_at_iso || STATE.predictions.updated_at;
+      syncEl.textContent = formatYangonTimestamp(stamp);
       renderPredictionViews();
     } else {
-      syncEl.textContent = "Waiting for Action run";
+      syncEl.textContent = "Waiting for Action";
     }
   } catch (err) {
-    syncEl.textContent = "Offline / Sync error";
+    syncEl.textContent = "Sync error";
     console.error(err);
   }
 }
@@ -115,7 +136,7 @@ function populateSessionDropdown() {
     const last = completedRows[completedRows.length - 1];
     const p = parseDateParts(last.Date);
     document.getElementById("latestBadge").textContent =
-      `Latest: ${p.shortDate} (${p.dayFull}) ${last.Is_PM === "1" ? "PM" : "AM"} = ${formatNum(last.Winning_Number)}`;
+      `Latest: ${p.shortDate} (${p.dayShort}) ${last.Is_PM === "1" ? "PM" : "AM"} = ${formatNum(last.Winning_Number)}`;
   }
 
   openRows.slice(0, 10).forEach((r) => {
@@ -127,18 +148,28 @@ function populateSessionDropdown() {
   });
 }
 
+function renderDayColumnHtml(d) {
+  return `
+    <div class="compact-day-col">
+      <div class="compact-day-head">
+        <span>${d.dayNum}</span>
+        <span>${d.dayShort}</span>
+      </div>
+      <div class="slot-box am-slot ${d.am === "—" ? "is-empty" : ""}">${d.am}</div>
+      <div class="slot-box pm-slot ${d.pm === "—" ? "is-empty" : ""}">${d.pm}</div>
+    </div>`;
+}
+
 function renderCurrentWeek() {
   const grid = document.getElementById("currentWeekGrid");
   const labelEl = document.getElementById("weekRangeLabel");
   if (!STATE.drawsRows.length) return;
 
-  // Find the active week containing the first open slot (or latest completed draw)
   const firstOpen = STATE.drawsRows.find((r) => !r.Winning_Number || r.Winning_Number === "NaN");
   const anchorRow = firstOpen || STATE.drawsRows[STATE.drawsRows.length - 1];
   const anchorDate = parseDateParts(anchorRow.Date).dt;
 
-  // Compute Monday of that week
-  const day = anchorDate.getDay(); // 0=Sun..6=Sat
+  const day = anchorDate.getDay();
   const diffToMon = day === 0 ? -6 : 1 - day;
   const monday = new Date(anchorDate);
   monday.setDate(anchorDate.getDate() + diffToMon);
@@ -150,7 +181,7 @@ function renderCurrentWeek() {
     const key = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
     weekDates.push({
       key,
-      shortDate: `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`,
+      dayNum: `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`,
       dayShort: DAYS_SHORT[d.getDay()],
       am: "—",
       pm: "—",
@@ -166,28 +197,8 @@ function renderCurrentWeek() {
     }
   });
 
-  labelEl.textContent = `${weekDates[0].shortDate} – ${weekDates[4].shortDate}`;
-  grid.innerHTML = weekDates
-    .map(
-      (w) => `
-      <div class="week-day-box">
-        <div class="week-day-header">
-          <span>${w.shortDate}</span>
-          <span>${w.dayShort}</span>
-        </div>
-        <div class="week-sessions">
-          <div class="week-slot ${w.am !== "—" ? "filled" : ""}">
-            <span class="slot-tag">AM</span>
-            <span class="slot-num">${w.am}</span>
-          </div>
-          <div class="week-slot ${w.pm !== "—" ? "filled" : ""}">
-            <span class="slot-tag">PM</span>
-            <span class="slot-num">${w.pm}</span>
-          </div>
-        </div>
-      </div>`
-    )
-    .join("");
+  labelEl.textContent = `${weekDates[0].dayNum} – ${weekDates[4].dayNum}`;
+  grid.innerHTML = weekDates.map(renderDayColumnHtml).join("");
 }
 
 function initHistorySelectors() {
@@ -231,82 +242,63 @@ function renderWinningHistory() {
   const container = document.getElementById("winningMonthGrid");
   if (!STATE.drawsRows.length || STATE.selectedYear === null) return;
 
-  const monthRows = STATE.drawsRows.filter((r) => {
+  // Map all recorded draws in selected Year & Month
+  const lookup = {};
+  STATE.drawsRows.forEach((r) => {
     const p = parseDateParts(r.Date);
-    return p.year === STATE.selectedYear && p.monthIndex === STATE.selectedMonth;
+    if (p.year === STATE.selectedYear && p.monthIndex === STATE.selectedMonth) {
+      if (!lookup[p.day]) lookup[p.day] = { am: "—", pm: "—" };
+      const val = formatNum(r.Winning_Number);
+      if (r.Is_PM === "1") lookup[p.day].pm = val;
+      else lookup[p.day].am = val;
+    }
   });
 
-  if (!monthRows.length) {
-    container.innerHTML = `<p class="muted">No draws recorded for ${MONTHS_SHORT[STATE.selectedMonth]} ${STATE.selectedYear}.</p>`;
+  // Build chronological weeks from the 1st to the last day of the month (Mon-Fri)
+  const daysInMonth = new Date(STATE.selectedYear, STATE.selectedMonth + 1, 0).getDate();
+  const weeks = [];
+  let currentWeek = null;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dt = new Date(STATE.selectedYear, STATE.selectedMonth, day);
+    const dow = dt.getDay(); // 0=Sun..6=Sat
+    if (dow === 0 || dow === 6) continue; // Skip weekends
+
+    // Start a new week block on Monday or on the first weekday of the month
+    if (!currentWeek || dow === 1) {
+      currentWeek = {
+        startDay: day,
+        endDay: day,
+        days: [],
+      };
+      weeks.push(currentWeek);
+    }
+    currentWeek.endDay = day;
+    const vals = lookup[day] || { am: "—", pm: "—" };
+    currentWeek.days.push({
+      dayNum: `${day} ${MONTHS_SHORT[STATE.selectedMonth]}`,
+      dayShort: DAYS_SHORT[dow],
+      am: vals.am,
+      pm: vals.pm,
+    });
+  }
+
+  if (!weeks.length) {
+    container.innerHTML = `<p class="muted">No weekday draws for ${MONTHS_SHORT[STATE.selectedMonth]} ${STATE.selectedYear}.</p>`;
     return;
   }
 
-  // Group by date first, then group dates into Monday-Friday weeks
-  const dayMap = new Map();
-  monthRows.forEach((r) => {
-    if (!dayMap.has(r.Date)) {
-      const p = parseDateParts(r.Date);
-      const dayOfWeek = p.dt.getDay();
-      const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monDate = new Date(p.dt);
-      monDate.setDate(p.dt.getDate() + diffToMon);
-      const weekKey = `${monDate.getFullYear()}-${String(monDate.getMonth() + 1).padStart(2, "0")}-${String(monDate.getDate()).padStart(2, "0")}`;
-      const weekLabel = `Week of ${monDate.getDate()} ${MONTHS_SHORT[monDate.getMonth()]}`;
-
-      dayMap.set(r.Date, {
-        dateStr: r.Date,
-        shortDate: p.shortDate,
-        dayShort: p.dayShort,
-        weekKey,
-        weekLabel,
-        am: "—",
-        pm: "—",
-      });
-    }
-    const entry = dayMap.get(r.Date);
-    const val = formatNum(r.Winning_Number);
-    if (r.Is_PM === "1") entry.pm = val;
-    else entry.am = val;
-  });
-
-  const weeksMap = new Map();
-  dayMap.forEach((dayObj) => {
-    if (!weeksMap.has(dayObj.weekKey)) {
-      weeksMap.set(dayObj.weekKey, { label: dayObj.weekLabel, days: [] });
-    }
-    weeksMap.get(dayObj.weekKey).days.push(dayObj);
-  });
-
-  // Sort weeks newest first within the month
-  const sortedWeeks = [...weeksMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-
-  container.innerHTML = sortedWeeks
+  // Render chronologically from 1st -> 31st, 1 compact card per week
+  container.innerHTML = weeks
     .map(
-      ([, wk]) => `
-      <div class="archive-week-row">
-        <div class="archive-week-title">${wk.label}</div>
-        <div class="archive-days-grid">
-          ${wk.days
-            .map(
-              (d) => `
-              <div class="week-day-box">
-                <div class="week-day-header">
-                  <span>${d.shortDate}</span>
-                  <span>${d.dayShort}</span>
-                </div>
-                <div class="week-sessions">
-                  <div class="week-slot ${d.am !== "—" ? "filled" : ""}">
-                    <span class="slot-tag">AM</span>
-                    <span class="slot-num">${d.am}</span>
-                  </div>
-                  <div class="week-slot ${d.pm !== "—" ? "filled" : ""}">
-                    <span class="slot-tag">PM</span>
-                    <span class="slot-num">${d.pm}</span>
-                  </div>
-                </div>
-              </div>`
-            )
-            .join("")}
+      (wk, idx) => `
+      <div class="week-card">
+        <div class="week-card-label">
+          <span>Week ${idx + 1}</span>
+          <span>${wk.startDay}–${wk.endDay} ${MONTHS_SHORT[STATE.selectedMonth]}</span>
+        </div>
+        <div class="compact-days-row">
+          ${wk.days.map(renderDayColumnHtml).join("")}
         </div>
       </div>`
     )
@@ -316,7 +308,7 @@ function renderWinningHistory() {
 async function githubGetFile(path) {
   const cfg = getConfig();
   if (!cfg.owner || !cfg.repo || !cfg.token) {
-    throw new Error("Please configure your GitHub token in '⚙ GitHub Setup' first.");
+    throw new Error("Please configure your GitHub token in the ⚙ Gear icon first.");
   }
   const branch = cfg.branch || "main";
   const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}`;
@@ -394,7 +386,7 @@ async function handleLogDraw(e) {
     );
 
     document.getElementById("winningInput").value = "";
-    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating in the background (~45s). Click Refresh shortly.`;
+    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating (~45s). Tap ↻ shortly.`;
     STATE.drawsRows = rows;
     populateSessionDropdown();
     renderCurrentWeek();
@@ -422,7 +414,7 @@ function renderRadar() {
       return `
         <div class="radar-cell ${cls}">
           <div class="radar-digit">${digit}</div>
-          <div class="radar-gap">${gap} draws</div>
+          <div class="radar-gap">${gap}d</div>
         </div>`;
     })
     .join("");
@@ -458,7 +450,7 @@ function renderUpcoming() {
           ([mName, m]) => `
           <div class="model-mini-row">
             <strong>${mName.replace("_", " ")}</strong>
-            <span>Anchor: <b>${m.anchor_digit}</b> (${(m.anchor_prob * 100).toFixed(1)}%) • Pairs: ${m.top_pairs.join(", ")}</span>
+            <span>Anchor: <b>${m.anchor_digit}</b> (${(m.anchor_prob * 100).toFixed(1)}%) • ${m.top_pairs.join(", ")}</span>
           </div>`
         )
         .join("");
@@ -466,28 +458,26 @@ function renderUpcoming() {
       return `
         <article class="pred-card">
           <div class="card-header" style="margin-bottom:0">
-            <div>
-              <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
-            </div>
+            <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
             <span class="session-pill ${item.session.toLowerCase()}">${item.session}</span>
           </div>
 
           <div class="anchor-box">
             <div class="anchor-pill primary">
-              <div class="anchor-label">Primary Anchor Digit</div>
+              <div class="anchor-label">Primary Anchor</div>
               <div class="anchor-val">${p1.digit}</div>
               <div class="anchor-meta">${(p1.prob * 100).toFixed(1)}% • ${p1.votes} Models</div>
             </div>
             <div class="anchor-pill">
-              <div class="anchor-label">Backup Anchor Digit</div>
+              <div class="anchor-label">Backup Anchor</div>
               <div class="anchor-val">${p2.digit}</div>
               <div class="anchor-meta">${(p2.prob * 100).toFixed(1)}% • ${p2.votes} Models</div>
             </div>
           </div>
 
           <div>
-            <div class="muted small" style="margin-bottom:6px">
-              Anchor-Filtered Pairs (Cross-Pair: <b>${(item.intersection_pairs || []).join(" / ")}</b>)
+            <div class="muted small" style="margin-bottom:5px">
+              Top Pairs (Cross: <b>${(item.intersection_pairs || []).join(" / ")}</b>)
             </div>
             <div class="pairs-row">${pairsHtml}</div>
           </div>
@@ -513,15 +503,15 @@ function renderWinLog() {
   const anyWin = exact + rev + anchor;
 
   strip.innerHTML = `
-    <div class="stat-box"><div class="muted small">Evaluated Draws</div><div class="num">${total}</div></div>
-    <div class="stat-box"><div class="muted small">Total Wins (Pair + Digit)</div><div class="num">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
-    <div class="stat-box"><div class="muted small">Exact + Reverse (R)</div><div class="num" style="color:#fbbf24">${exact + rev}</div></div>
-    <div class="stat-box"><div class="muted small">Anchor Digit Hits</div><div class="num" style="color:#38bdf8">${anchor}</div></div>
+    <div class="stat-box"><div class="muted small">Evaluated</div><div class="num">${total}</div></div>
+    <div class="stat-box"><div class="muted small">Total Wins</div><div class="num">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
+    <div class="stat-box"><div class="muted small">Exact + Reverse</div><div class="num" style="color:#fbbf24">${exact + rev}</div></div>
+    <div class="stat-box"><div class="muted small">Anchor Hits</div><div class="num" style="color:#38bdf8">${anchor}</div></div>
   `;
 
   const filtered = STATE.activeFilter === "ALL" ? hist : hist.filter((h) => h.outcome === STATE.activeFilter);
   if (!filtered.length) {
-    listEl.innerHTML = `<p class="muted">No graded predictions in this filter yet. Every upcoming forecast is automatically archived and graded here as soon as you log its winning number.</p>`;
+    listEl.innerHTML = `<p class="muted">No graded predictions in this filter yet. Every forecast is automatically graded here once its result is logged.</p>`;
     return;
   }
 
@@ -532,17 +522,17 @@ function renderWinLog() {
       const dayFull = h.day_full || p.dayFull;
       const pairs = (h.top_pairs || []).map((x) => x.pair).join(", ");
       const labelMap = {
-        EXACT: "★ GOLD: EXACT PAIR",
+        EXACT: "★ GOLD: EXACT",
         REVERSE: "◆ EMERALD: REVERSE (R)",
-        ANCHOR_HIT: "● BLUE: ANCHOR DIGIT",
+        ANCHOR_HIT: "● BLUE: ANCHOR",
         MISS: "MISS",
       };
       return `
         <div class="hist-row ${h.outcome}">
           <div>
-            <strong>${shortDate} (${dayFull}) • ${h.session}</strong> — Actual: <b style="font-size:16px">${h.actual}</b>
+            <strong>${shortDate} (${dayFull}) • ${h.session}</strong> — Actual: <b style="font-size:15px">${h.actual}</b>
             <div class="muted small">
-              Anchors: <b>${h.primary_anchor?.digit}</b> & <b>${h.secondary_anchor?.digit}</b> • Top Pairs: ${pairs}
+              Anchors: <b>${h.primary_anchor?.digit}</b> & <b>${h.secondary_anchor?.digit}</b> • Pairs: ${pairs}
             </div>
           </div>
           <span class="outcome-tag ${h.outcome}">${labelMap[h.outcome] || h.outcome}</span>
@@ -567,9 +557,9 @@ function renderModels() {
             <strong>${mName.replace("_", " ")}</strong>
             <span class="chip">${(w * 100).toFixed(1)}% wt</span>
           </div>
-          <div class="muted small" style="margin-top:8px">
+          <div class="muted small" style="margin-top:7px">
             Anchor Hit Rate: <b>${rate}</b> (${st.anchor_hits}/${st.evaluated})<br/>
-            Exact Pairs: <b>${st.exact_hits}</b> • Reverse (R): <b>${st.reverse_hits}</b>
+            Exact: <b>${st.exact_hits}</b> • Reverse (R): <b>${st.reverse_hits}</b>
           </div>
         </div>`;
     })
