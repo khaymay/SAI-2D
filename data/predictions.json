@@ -1,7 +1,6 @@
 {
   "app_name": "SAI 2D",
-  "updated_at": "2026-11-16 16:11 UTC",
-  "latest_session_id": 1855,
+  "updated_at": "16 Nov \u2022 16:32 UTC",
   "model_weights": {
     "TabPFN_3.5": 0.2,
     "LightGBM": 0.2,
@@ -42,7 +41,6 @@
     }
   },
   "drought_radar": {
-    "as_of_session": 1855,
     "tens_gaps": {
       "0": 4,
       "1": 6,
@@ -96,38 +94,18 @@
     {
       "session_id": 1856,
       "date": "11/17/2026",
+      "short_date": "17 Nov",
       "day": "Tue",
+      "day_full": "Tuesday",
       "session": "AM",
-      "locked": true,
       "primary_anchor": {
         "digit": 5,
-        "prob": 0.2516,
-        "votes": "3/5",
-        "wheel_19": [
-          "05",
-          "15",
-          "25",
-          "35",
-          "45",
-          "50",
-          "51",
-          "52",
-          "53",
-          "54",
-          "55",
-          "56",
-          "57",
-          "58",
-          "59",
-          "65",
-          "75",
-          "85",
-          "95"
-        ]
+        "prob": 0.2518,
+        "votes": "3/5"
       },
       "secondary_anchor": {
         "digit": 8,
-        "prob": 0.2061,
+        "prob": 0.2057,
         "votes": "0/5"
       },
       "intersection_pairs": [
@@ -149,7 +127,7 @@
         {
           "pair": "55",
           "reverse": "55",
-          "prob": 0.0193,
+          "prob": 0.0195,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -160,7 +138,7 @@
         {
           "pair": "85",
           "reverse": "58",
-          "prob": 0.0173,
+          "prob": 0.0174,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -171,7 +149,7 @@
         {
           "pair": "65",
           "reverse": "56",
-          "prob": 0.0169,
+          "prob": 0.017,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -191,10 +169,9 @@
         {
           "pair": "05",
           "reverse": "50",
-          "prob": 0.0164,
+          "prob": 0.0163,
           "contains_primary": true,
           "supporters": [
-            "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
             "L2_Logistic"
@@ -203,13 +180,13 @@
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 0,
-          "backup_digit": 7,
-          "anchor_prob": 0.2,
+          "anchor_digit": 7,
+          "backup_digit": 1,
+          "anchor_prob": 0.2007,
           "top_pairs": [
             "98",
             "68",
-            "08"
+            "21"
           ]
         },
         "LightGBM": {
@@ -257,38 +234,18 @@
     {
       "session_id": 1857,
       "date": "11/17/2026",
+      "short_date": "17 Nov",
       "day": "Tue",
+      "day_full": "Tuesday",
       "session": "PM",
-      "locked": false,
       "primary_anchor": {
         "digit": 1,
         "prob": 0.2337,
-        "votes": "1/5",
-        "wheel_19": [
-          "01",
-          "10",
-          "11",
-          "12",
-          "13",
-          "14",
-          "15",
-          "16",
-          "17",
-          "18",
-          "19",
-          "21",
-          "31",
-          "41",
-          "51",
-          "61",
-          "71",
-          "81",
-          "91"
-        ]
+        "votes": "1/5"
       },
       "secondary_anchor": {
         "digit": 7,
-        "prob": 0.2301,
+        "prob": 0.2299,
         "votes": "3/5"
       },
       "intersection_pairs": [
@@ -299,7 +256,7 @@
         {
           "pair": "17",
           "reverse": "71",
-          "prob": 0.0191,
+          "prob": 0.0192,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -310,7 +267,7 @@
         {
           "pair": "57",
           "reverse": "75",
-          "prob": 0.0165,
+          "prob": 0.0164,
           "contains_primary": false,
           "supporters": [
             "CatBoost",
@@ -320,7 +277,7 @@
         {
           "pair": "77",
           "reverse": "77",
-          "prob": 0.0161,
+          "prob": 0.0163,
           "contains_primary": false,
           "supporters": [
             "CatBoost",
@@ -330,7 +287,7 @@
         {
           "pair": "19",
           "reverse": "91",
-          "prob": 0.016,
+          "prob": 0.0159,
           "contains_primary": true,
           "supporters": [
             "LightGBM"
@@ -358,8 +315,8 @@
       "models": {
         "Bayesian_Markov": {
           "anchor_digit": 0,
-          "backup_digit": 3,
-          "anchor_prob": 0.2154,
+          "backup_digit": 4,
+          "anchor_prob": 0.2173,
           "top_pairs": [
             "68",
             "14",
@@ -411,38 +368,18 @@
     {
       "session_id": 1858,
       "date": "11/18/2026",
+      "short_date": "18 Nov",
       "day": "Wed",
+      "day_full": "Wednesday",
       "session": "AM",
-      "locked": false,
       "primary_anchor": {
         "digit": 7,
-        "prob": 0.2532,
-        "votes": "3/5",
-        "wheel_19": [
-          "07",
-          "17",
-          "27",
-          "37",
-          "47",
-          "57",
-          "67",
-          "70",
-          "71",
-          "72",
-          "73",
-          "74",
-          "75",
-          "76",
-          "77",
-          "78",
-          "79",
-          "87",
-          "97"
-        ]
+        "prob": 0.2534,
+        "votes": "3/5"
       },
       "secondary_anchor": {
         "digit": 1,
-        "prob": 0.2293,
+        "prob": 0.2294,
         "votes": "4/5"
       },
       "intersection_pairs": [
@@ -453,7 +390,7 @@
         {
           "pair": "17",
           "reverse": "71",
-          "prob": 0.0248,
+          "prob": 0.0249,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
@@ -488,7 +425,7 @@
         {
           "pair": "77",
           "reverse": "77",
-          "prob": 0.0163,
+          "prob": 0.0164,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
@@ -498,7 +435,7 @@
         {
           "pair": "87",
           "reverse": "78",
-          "prob": 0.0154,
+          "prob": 0.0157,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
@@ -520,7 +457,7 @@
         "Bayesian_Markov": {
           "anchor_digit": 7,
           "backup_digit": 1,
-          "anchor_prob": 0.2136,
+          "anchor_prob": 0.2146,
           "top_pairs": [
             "87",
             "18",
@@ -572,38 +509,18 @@
     {
       "session_id": 1859,
       "date": "11/18/2026",
+      "short_date": "18 Nov",
       "day": "Wed",
+      "day_full": "Wednesday",
       "session": "PM",
-      "locked": false,
       "primary_anchor": {
         "digit": 9,
-        "prob": 0.2148,
-        "votes": "1/5",
-        "wheel_19": [
-          "09",
-          "19",
-          "29",
-          "39",
-          "49",
-          "59",
-          "69",
-          "79",
-          "89",
-          "90",
-          "91",
-          "92",
-          "93",
-          "94",
-          "95",
-          "96",
-          "97",
-          "98",
-          "99"
-        ]
+        "prob": 0.2145,
+        "votes": "1/5"
       },
       "secondary_anchor": {
         "digit": 5,
-        "prob": 0.2112,
+        "prob": 0.2115,
         "votes": "1/5"
       },
       "intersection_pairs": [
@@ -614,7 +531,7 @@
         {
           "pair": "15",
           "reverse": "51",
-          "prob": 0.0242,
+          "prob": 0.0243,
           "contains_primary": false,
           "supporters": [
             "LightGBM",
@@ -625,7 +542,7 @@
         {
           "pair": "19",
           "reverse": "91",
-          "prob": 0.0235,
+          "prob": 0.0234,
           "contains_primary": true,
           "supporters": [
             "LightGBM"
@@ -634,7 +551,7 @@
         {
           "pair": "25",
           "reverse": "52",
-          "prob": 0.0197,
+          "prob": 0.0198,
           "contains_primary": false,
           "supporters": [
             "L2_Logistic"
@@ -663,7 +580,7 @@
         {
           "pair": "98",
           "reverse": "89",
-          "prob": 0.0144,
+          "prob": 0.0145,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
@@ -675,11 +592,11 @@
         "Bayesian_Markov": {
           "anchor_digit": 7,
           "backup_digit": 1,
-          "anchor_prob": 0.2195,
+          "anchor_prob": 0.2208,
           "top_pairs": [
             "17",
-            "98",
-            "13"
+            "13",
+            "98"
           ]
         },
         "LightGBM": {
@@ -727,34 +644,14 @@
     {
       "session_id": 1860,
       "date": "11/19/2026",
+      "short_date": "19 Nov",
       "day": "Thu",
+      "day_full": "Thursday",
       "session": "AM",
-      "locked": false,
       "primary_anchor": {
         "digit": 8,
-        "prob": 0.2322,
-        "votes": "1/5",
-        "wheel_19": [
-          "08",
-          "18",
-          "28",
-          "38",
-          "48",
-          "58",
-          "68",
-          "78",
-          "80",
-          "81",
-          "82",
-          "83",
-          "84",
-          "85",
-          "86",
-          "87",
-          "88",
-          "89",
-          "98"
-        ]
+        "prob": 0.2318,
+        "votes": "1/5"
       },
       "secondary_anchor": {
         "digit": 7,
@@ -791,17 +688,16 @@
         {
           "pair": "74",
           "reverse": "47",
-          "prob": 0.0157,
+          "prob": 0.0158,
           "contains_primary": false,
           "supporters": [
-            "Bayesian_Markov",
             "TabPFN_3.5"
           ]
         },
         {
           "pair": "98",
           "reverse": "89",
-          "prob": 0.0147,
+          "prob": 0.0146,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -820,7 +716,7 @@
         {
           "pair": "84",
           "reverse": "48",
-          "prob": 0.0144,
+          "prob": 0.0145,
           "contains_primary": true,
           "supporters": [
             "L2_Logistic"
@@ -829,9 +725,9 @@
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.2089,
+          "anchor_digit": 5,
+          "backup_digit": 7,
+          "anchor_prob": 0.2098,
           "top_pairs": [
             "78",
             "75",
@@ -883,38 +779,18 @@
     {
       "session_id": 1861,
       "date": "11/19/2026",
+      "short_date": "19 Nov",
       "day": "Thu",
+      "day_full": "Thursday",
       "session": "PM",
-      "locked": false,
       "primary_anchor": {
         "digit": 1,
-        "prob": 0.2152,
-        "votes": "2/5",
-        "wheel_19": [
-          "01",
-          "10",
-          "11",
-          "12",
-          "13",
-          "14",
-          "15",
-          "16",
-          "17",
-          "18",
-          "19",
-          "21",
-          "31",
-          "41",
-          "51",
-          "61",
-          "71",
-          "81",
-          "91"
-        ]
+        "prob": 0.2151,
+        "votes": "2/5"
       },
       "secondary_anchor": {
         "digit": 4,
-        "prob": 0.2073,
+        "prob": 0.2075,
         "votes": "2/5"
       },
       "intersection_pairs": [
@@ -936,10 +812,9 @@
         {
           "pair": "10",
           "reverse": "01",
-          "prob": 0.0153,
+          "prob": 0.0154,
           "contains_primary": true,
           "supporters": [
-            "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
             "L2_Logistic"
@@ -948,7 +823,7 @@
         {
           "pair": "17",
           "reverse": "71",
-          "prob": 0.0148,
+          "prob": 0.0149,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
@@ -981,20 +856,20 @@
         {
           "pair": "34",
           "reverse": "43",
-          "prob": 0.0131,
+          "prob": 0.0132,
           "contains_primary": false,
           "supporters": []
         }
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 0,
-          "backup_digit": 7,
-          "anchor_prob": 0.2042,
+          "anchor_digit": 7,
+          "backup_digit": 0,
+          "anchor_prob": 0.2052,
           "top_pairs": [
             "53",
             "78",
-            "17"
+            "20"
           ]
         },
         "LightGBM": {
@@ -1042,38 +917,18 @@
     {
       "session_id": 1862,
       "date": "11/20/2026",
+      "short_date": "20 Nov",
       "day": "Fri",
+      "day_full": "Friday",
       "session": "AM",
-      "locked": false,
       "primary_anchor": {
         "digit": 6,
         "prob": 0.2175,
-        "votes": "2/5",
-        "wheel_19": [
-          "06",
-          "16",
-          "26",
-          "36",
-          "46",
-          "56",
-          "60",
-          "61",
-          "62",
-          "63",
-          "64",
-          "65",
-          "66",
-          "67",
-          "68",
-          "69",
-          "76",
-          "86",
-          "96"
-        ]
+        "votes": "2/5"
       },
       "secondary_anchor": {
         "digit": 8,
-        "prob": 0.2154,
+        "prob": 0.2157,
         "votes": "2/5"
       },
       "intersection_pairs": [
@@ -1101,9 +956,10 @@
         {
           "pair": "65",
           "reverse": "56",
-          "prob": 0.0169,
+          "prob": 0.017,
           "contains_primary": true,
           "supporters": [
+            "Bayesian_Markov",
             "L2_Logistic"
           ]
         },
@@ -1120,7 +976,7 @@
         {
           "pair": "67",
           "reverse": "76",
-          "prob": 0.0151,
+          "prob": 0.015,
           "contains_primary": true,
           "supporters": [
             "CatBoost"
@@ -1129,16 +985,16 @@
         {
           "pair": "61",
           "reverse": "16",
-          "prob": 0.0144,
+          "prob": 0.0143,
           "contains_primary": true,
           "supporters": []
         }
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 3,
-          "backup_digit": 5,
-          "anchor_prob": 0.2038,
+          "anchor_digit": 5,
+          "backup_digit": 3,
+          "anchor_prob": 0.2051,
           "top_pairs": [
             "98",
             "50",
@@ -1190,38 +1046,18 @@
     {
       "session_id": 1863,
       "date": "11/20/2026",
+      "short_date": "20 Nov",
       "day": "Fri",
+      "day_full": "Friday",
       "session": "PM",
-      "locked": false,
       "primary_anchor": {
         "digit": 4,
         "prob": 0.2194,
-        "votes": "3/5",
-        "wheel_19": [
-          "04",
-          "14",
-          "24",
-          "34",
-          "40",
-          "41",
-          "42",
-          "43",
-          "44",
-          "45",
-          "46",
-          "47",
-          "48",
-          "49",
-          "54",
-          "64",
-          "74",
-          "84",
-          "94"
-        ]
+        "votes": "3/5"
       },
       "secondary_anchor": {
         "digit": 2,
-        "prob": 0.2003,
+        "prob": 0.2005,
         "votes": "2/5"
       },
       "intersection_pairs": [
@@ -1232,7 +1068,7 @@
         {
           "pair": "84",
           "reverse": "48",
-          "prob": 0.0167,
+          "prob": 0.0166,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -1243,7 +1079,7 @@
         {
           "pair": "24",
           "reverse": "42",
-          "prob": 0.0159,
+          "prob": 0.0158,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -1265,7 +1101,7 @@
         {
           "pair": "64",
           "reverse": "46",
-          "prob": 0.0141,
+          "prob": 0.0142,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -1276,7 +1112,7 @@
         {
           "pair": "14",
           "reverse": "41",
-          "prob": 0.0141,
+          "prob": 0.014,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
@@ -1288,7 +1124,7 @@
         {
           "pair": "74",
           "reverse": "47",
-          "prob": 0.0137,
+          "prob": 0.0139,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
@@ -1301,11 +1137,11 @@
         "Bayesian_Markov": {
           "anchor_digit": 1,
           "backup_digit": 0,
-          "anchor_prob": 0.2066,
+          "anchor_prob": 0.2059,
           "top_pairs": [
             "16",
             "13",
-            "59"
+            "03"
           ]
         },
         "LightGBM": {
