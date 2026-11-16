@@ -1,9 +1,15 @@
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 const STATE = {
   predictions: null,
   drawsCsvRaw: "",
   drawsRows: [],
   activeRadar: "any_pos_gaps",
   activeFilter: "ALL",
+  selectedYear: null,
+  selectedMonth: null,
 };
 
 const STORAGE_KEY = "sai2d_gh_config_v1";
@@ -18,6 +24,27 @@ function getConfig() {
 
 function saveConfig(cfg) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+}
+
+function parseDateParts(dateStr) {
+  const [m, d, y] = dateStr.split("/").map((x) => parseInt(x, 10));
+  const dt = new Date(y, m - 1, d);
+  return {
+    dt,
+    year: y,
+    monthIndex: m - 1,
+    day: d,
+    shortDate: `${d} ${MONTHS_SHORT[m - 1]}`,
+    dayShort: DAYS_SHORT[dt.getDay()],
+    dayFull: DAYS_FULL[dt.getDay()],
+    dow: dt.getDay(), // 1=Mon ... 5=Fri
+  };
+}
+
+function formatNum(val) {
+  if (val === null || val === undefined || val === "" || val === "NaN") return "—";
+  const n = parseInt(val, 10);
+  return Number.isNaN(n) ? "—" : String(n).padStart(2, "0");
 }
 
 function parseCsv(text) {
@@ -59,20 +86,18 @@ async function fetchRepoData() {
     if (csvRes.ok) {
       STATE.drawsCsvRaw = await csvRes.text();
       STATE.drawsRows = parseCsv(STATE.drawsCsvRaw);
+      initHistorySelectors();
       populateSessionDropdown();
+      renderCurrentWeek();
+      renderWinningHistory();
     }
 
     if (predRes.ok) {
       STATE.predictions = await predRes.json();
       syncEl.textContent = `Updated: ${STATE.predictions.updated_at || "Ready"}`;
-      renderAll();
+      renderPredictionViews();
     } else {
-      syncEl.textContent = "Waiting for first Action run";
-      document.getElementById("upcomingGrid").innerHTML = `
-        <div class="card">
-          <h3>No predictions.json yet</h3>
-          <p class="muted">Go to your GitHub repo → <b>Actions</b> → <b>SAI 2D Prediction Engine</b> → <b>Run workflow</b> to generate your initial 5-model forecast.</p>
-        </div>`;
+      syncEl.textContent = "Waiting for Action run";
     }
   } catch (err) {
     syncEl.textContent = "Offline / Sync error";
@@ -88,17 +113,204 @@ function populateSessionDropdown() {
 
   if (completedRows.length > 0) {
     const last = completedRows[completedRows.length - 1];
-    const numStr = String(parseInt(last.Winning_Number, 10)).padStart(2, "0");
+    const p = parseDateParts(last.Date);
     document.getElementById("latestBadge").textContent =
-      `Latest: #${last.Session_ID} (${last.Date} ${last.Is_PM === "1" ? "PM" : "AM"}) = ${numStr}`;
+      `Latest: ${p.shortDate} (${p.dayFull}) ${last.Is_PM === "1" ? "PM" : "AM"} = ${formatNum(last.Winning_Number)}`;
   }
 
   openRows.slice(0, 10).forEach((r) => {
+    const p = parseDateParts(r.Date);
     const opt = document.createElement("option");
     opt.value = r.Session_ID;
-    opt.textContent = `Session #${r.Session_ID} — ${r.Date} (${r.Is_PM === "1" ? "PM 4:30" : "AM 12:01"})`;
+    opt.textContent = `${p.shortDate} (${p.dayFull}) — ${r.Is_PM === "1" ? "PM (4:30)" : "AM (12:01)"}`;
     select.appendChild(opt);
   });
+}
+
+function renderCurrentWeek() {
+  const grid = document.getElementById("currentWeekGrid");
+  const labelEl = document.getElementById("weekRangeLabel");
+  if (!STATE.drawsRows.length) return;
+
+  // Find the active week containing the first open slot (or latest completed draw)
+  const firstOpen = STATE.drawsRows.find((r) => !r.Winning_Number || r.Winning_Number === "NaN");
+  const anchorRow = firstOpen || STATE.drawsRows[STATE.drawsRows.length - 1];
+  const anchorDate = parseDateParts(anchorRow.Date).dt;
+
+  // Compute Monday of that week
+  const day = anchorDate.getDay(); // 0=Sun..6=Sat
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const monday = new Date(anchorDate);
+  monday.setDate(anchorDate.getDate() + diffToMon);
+
+  const weekDates = [];
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const key = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+    weekDates.push({
+      key,
+      shortDate: `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`,
+      dayShort: DAYS_SHORT[d.getDay()],
+      am: "—",
+      pm: "—",
+    });
+  }
+
+  const byDate = Object.fromEntries(weekDates.map((w) => [w.key, w]));
+  STATE.drawsRows.forEach((r) => {
+    if (byDate[r.Date]) {
+      const val = formatNum(r.Winning_Number);
+      if (r.Is_PM === "1") byDate[r.Date].pm = val;
+      else byDate[r.Date].am = val;
+    }
+  });
+
+  labelEl.textContent = `${weekDates[0].shortDate} – ${weekDates[4].shortDate}`;
+  grid.innerHTML = weekDates
+    .map(
+      (w) => `
+      <div class="week-day-box">
+        <div class="week-day-header">
+          <span>${w.shortDate}</span>
+          <span>${w.dayShort}</span>
+        </div>
+        <div class="week-sessions">
+          <div class="week-slot ${w.am !== "—" ? "filled" : ""}">
+            <span class="slot-tag">AM</span>
+            <span class="slot-num">${w.am}</span>
+          </div>
+          <div class="week-slot ${w.pm !== "—" ? "filled" : ""}">
+            <span class="slot-tag">PM</span>
+            <span class="slot-num">${w.pm}</span>
+          </div>
+        </div>
+      </div>`
+    )
+    .join("");
+}
+
+function initHistorySelectors() {
+  const completed = STATE.drawsRows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
+  if (!completed.length) return;
+
+  const years = [...new Set(completed.map((r) => parseInt(r.Year, 10)))].sort((a, b) => b - a);
+  const latest = completed[completed.length - 1];
+  const latestParts = parseDateParts(latest.Date);
+
+  if (!STATE.selectedYear) STATE.selectedYear = latestParts.year;
+  if (STATE.selectedMonth === null) STATE.selectedMonth = latestParts.monthIndex;
+
+  const yearSelect = document.getElementById("historyYearSelect");
+  yearSelect.innerHTML = years
+    .map((y) => `<option value="${y}" ${y === STATE.selectedYear ? "selected" : ""}>${y}</option>`)
+    .join("");
+
+  renderMonthPills();
+}
+
+function renderMonthPills() {
+  const pillsEl = document.getElementById("monthPills");
+  pillsEl.innerHTML = MONTHS_SHORT.map(
+    (mName, idx) => `
+      <button class="month-pill ${idx === STATE.selectedMonth ? "active" : ""}" data-month="${idx}">
+        ${mName}
+      </button>`
+  ).join("");
+
+  pillsEl.querySelectorAll(".month-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      STATE.selectedMonth = parseInt(btn.dataset.month, 10);
+      renderMonthPills();
+      renderWinningHistory();
+    });
+  });
+}
+
+function renderWinningHistory() {
+  const container = document.getElementById("winningMonthGrid");
+  if (!STATE.drawsRows.length || STATE.selectedYear === null) return;
+
+  const monthRows = STATE.drawsRows.filter((r) => {
+    const p = parseDateParts(r.Date);
+    return p.year === STATE.selectedYear && p.monthIndex === STATE.selectedMonth;
+  });
+
+  if (!monthRows.length) {
+    container.innerHTML = `<p class="muted">No draws recorded for ${MONTHS_SHORT[STATE.selectedMonth]} ${STATE.selectedYear}.</p>`;
+    return;
+  }
+
+  // Group by date first, then group dates into Monday-Friday weeks
+  const dayMap = new Map();
+  monthRows.forEach((r) => {
+    if (!dayMap.has(r.Date)) {
+      const p = parseDateParts(r.Date);
+      const dayOfWeek = p.dt.getDay();
+      const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monDate = new Date(p.dt);
+      monDate.setDate(p.dt.getDate() + diffToMon);
+      const weekKey = `${monDate.getFullYear()}-${String(monDate.getMonth() + 1).padStart(2, "0")}-${String(monDate.getDate()).padStart(2, "0")}`;
+      const weekLabel = `Week of ${monDate.getDate()} ${MONTHS_SHORT[monDate.getMonth()]}`;
+
+      dayMap.set(r.Date, {
+        dateStr: r.Date,
+        shortDate: p.shortDate,
+        dayShort: p.dayShort,
+        weekKey,
+        weekLabel,
+        am: "—",
+        pm: "—",
+      });
+    }
+    const entry = dayMap.get(r.Date);
+    const val = formatNum(r.Winning_Number);
+    if (r.Is_PM === "1") entry.pm = val;
+    else entry.am = val;
+  });
+
+  const weeksMap = new Map();
+  dayMap.forEach((dayObj) => {
+    if (!weeksMap.has(dayObj.weekKey)) {
+      weeksMap.set(dayObj.weekKey, { label: dayObj.weekLabel, days: [] });
+    }
+    weeksMap.get(dayObj.weekKey).days.push(dayObj);
+  });
+
+  // Sort weeks newest first within the month
+  const sortedWeeks = [...weeksMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+
+  container.innerHTML = sortedWeeks
+    .map(
+      ([, wk]) => `
+      <div class="archive-week-row">
+        <div class="archive-week-title">${wk.label}</div>
+        <div class="archive-days-grid">
+          ${wk.days
+            .map(
+              (d) => `
+              <div class="week-day-box">
+                <div class="week-day-header">
+                  <span>${d.shortDate}</span>
+                  <span>${d.dayShort}</span>
+                </div>
+                <div class="week-sessions">
+                  <div class="week-slot ${d.am !== "—" ? "filled" : ""}">
+                    <span class="slot-tag">AM</span>
+                    <span class="slot-num">${d.am}</span>
+                  </div>
+                  <div class="week-slot ${d.pm !== "—" ? "filled" : ""}">
+                    <span class="slot-tag">PM</span>
+                    <span class="slot-num">${d.pm}</span>
+                  </div>
+                </div>
+              </div>`
+            )
+            .join("")}
+        </div>
+      </div>`
+    )
+    .join("");
 }
 
 async function githubGetFile(path) {
@@ -160,15 +372,17 @@ async function handleLogDraw(e) {
   const numFormatted = String(numInt).padStart(2, "0");
 
   btn.disabled = true;
-  feedback.textContent = `Committing Session #${sid} = ${numFormatted} to GitHub...`;
+  feedback.textContent = `Saving ${numFormatted} to GitHub...`;
 
   try {
     const fileData = await githubGetFile("data/draws.csv");
     const latestCsv = decodeBase64Unicode(fileData.content);
     const rows = parseCsv(latestCsv);
     const target = rows.find((r) => r.Session_ID === String(sid));
-    if (!target) throw new Error(`Session #${sid} not found in data/draws.csv`);
+    if (!target) throw new Error("Target date slot not found in draws.csv");
 
+    const p = parseDateParts(target.Date);
+    const sessLabel = target.Is_PM === "1" ? "PM" : "AM";
     target.Winning_Number = String(numInt);
     const updatedCsv = toCsv(rows);
 
@@ -176,41 +390,19 @@ async function handleLogDraw(e) {
       "data/draws.csv",
       updatedCsv,
       fileData.sha,
-      `feat(draw): log Session #${sid} = ${numFormatted}`
+      `feat(draw): ${p.shortDate} (${p.dayShort}) ${sessLabel} = ${numFormatted}`
     );
 
     document.getElementById("winningInput").value = "";
-    feedback.textContent = `Saved Session #${sid} = ${numFormatted}! GitHub Actions is now running the 5-model update (~30s). Click Refresh shortly.`;
+    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating in the background (~45s). Click Refresh shortly.`;
     STATE.drawsRows = rows;
     populateSessionDropdown();
+    renderCurrentWeek();
+    renderWinningHistory();
   } catch (err) {
     feedback.textContent = `Error: ${err.message}`;
   } finally {
     btn.disabled = false;
-  }
-}
-
-async function toggleLockPrediction(sessionId) {
-  const feedback = document.getElementById("loggerFeedback");
-  try {
-    feedback.textContent = `Locking prediction snapshot for Session #${sessionId}...`;
-    const fileData = await githubGetFile("data/predictions.json");
-    const predObj = JSON.parse(decodeBase64Unicode(fileData.content));
-    const slot = (predObj.upcoming || []).find((u) => Number(u.session_id) === Number(sessionId));
-    if (!slot) throw new Error("Upcoming session not found.");
-    slot.locked = !slot.locked;
-
-    await githubPutFile(
-      "data/predictions.json",
-      JSON.stringify(predObj, null, 2),
-      fileData.sha,
-      `chore: ${slot.locked ? "lock" : "unlock"} prediction for Session #${sessionId}`
-    );
-    STATE.predictions = predObj;
-    renderUpcoming();
-    feedback.textContent = `Session #${sessionId} prediction ${slot.locked ? "LOCKED" : "unlocked"}.`;
-  } catch (err) {
-    feedback.textContent = `Lock failed: ${err.message}`;
   }
 }
 
@@ -230,7 +422,7 @@ function renderRadar() {
       return `
         <div class="radar-cell ${cls}">
           <div class="radar-digit">${digit}</div>
-          <div class="radar-gap">${gap}d gap</div>
+          <div class="radar-gap">${gap} draws</div>
         </div>`;
     })
     .join("");
@@ -240,19 +432,23 @@ function renderUpcoming() {
   const container = document.getElementById("upcomingGrid");
   const list = STATE.predictions?.upcoming || [];
   if (!list.length) {
-    container.innerHTML = `<p class="muted">No upcoming predictions available.</p>`;
+    container.innerHTML = `<p class="muted">No upcoming predictions available yet.</p>`;
     return;
   }
 
   container.innerHTML = list
     .map((item) => {
+      const p = parseDateParts(item.date);
+      const shortDate = item.short_date || p.shortDate;
+      const dayFull = item.day_full || p.dayFull;
       const p1 = item.primary_anchor;
       const p2 = item.secondary_anchor;
+
       const pairsHtml = (item.top_pairs || [])
         .map(
-          (p) => `
-          <div class="pair-badge" title="Supporters: ${(p.supporters || []).join(", ")}">
-            ${p.pair} <span>(${(p.prob * 100).toFixed(2)}%)</span>
+          (pairObj) => `
+          <div class="pair-badge" title="Supporters: ${(pairObj.supporters || []).join(", ")}">
+            ${pairObj.pair} <span>(${(pairObj.prob * 100).toFixed(2)}%)</span>
           </div>`
         )
         .join("");
@@ -268,15 +464,12 @@ function renderUpcoming() {
         .join("");
 
       return `
-        <article class="pred-card ${item.locked ? "is-locked" : ""}">
+        <article class="pred-card">
           <div class="card-header" style="margin-bottom:0">
             <div>
-              <strong>Session #${item.session_id}</strong>
-              <div class="muted small">${item.date} (${item.day}) • <b>${item.session}</b></div>
+              <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
             </div>
-            <button class="btn btn-outline btn-sm" onclick="toggleLockPrediction(${item.session_id})">
-              ${item.locked ? "🔒 Locked" : "🔓 Lock Pick"}
-            </button>
+            <span class="session-pill ${item.session.toLowerCase()}">${item.session}</span>
           </div>
 
           <div class="anchor-box">
@@ -299,15 +492,6 @@ function renderUpcoming() {
             <div class="pairs-row">${pairsHtml}</div>
           </div>
 
-          <div>
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wheel-${item.session_id}').classList.toggle('hidden')">
-              Toggle 19-Number Wheel (Digit ${p1.digit})
-            </button>
-            <div id="wheel-${item.session_id}" class="wheel-box hidden" style="margin-top:8px">
-              ${(p1.wheel_19 || []).join("  •  ")}
-            </div>
-          </div>
-
           <details>
             <summary>5-Model Breakdown</summary>
             <div class="model-mini-list">${modelsHtml}</div>
@@ -317,7 +501,7 @@ function renderUpcoming() {
     .join("");
 }
 
-function renderHistory() {
+function renderWinLog() {
   const hist = STATE.predictions?.history || [];
   const strip = document.getElementById("scoreSummaryStrip");
   const listEl = document.getElementById("historyList");
@@ -329,7 +513,7 @@ function renderHistory() {
   const anyWin = exact + rev + anchor;
 
   strip.innerHTML = `
-    <div class="stat-box"><div class="muted small">Scored Sessions</div><div class="num">${total}</div></div>
+    <div class="stat-box"><div class="muted small">Evaluated Draws</div><div class="num">${total}</div></div>
     <div class="stat-box"><div class="muted small">Total Wins (Pair + Digit)</div><div class="num">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
     <div class="stat-box"><div class="muted small">Exact + Reverse (R)</div><div class="num" style="color:#fbbf24">${exact + rev}</div></div>
     <div class="stat-box"><div class="muted small">Anchor Digit Hits</div><div class="num" style="color:#38bdf8">${anchor}</div></div>
@@ -337,13 +521,16 @@ function renderHistory() {
 
   const filtered = STATE.activeFilter === "ALL" ? hist : hist.filter((h) => h.outcome === STATE.activeFilter);
   if (!filtered.length) {
-    listEl.innerHTML = `<p class="muted">No scored predictions in this filter yet. Once you log a draw for an upcoming session, it will appear here with Gold/Emerald/Blue win highlights.</p>`;
+    listEl.innerHTML = `<p class="muted">No graded predictions in this filter yet. Every upcoming forecast is automatically archived and graded here as soon as you log its winning number.</p>`;
     return;
   }
 
   listEl.innerHTML = filtered
     .map((h) => {
-      const pairs = (h.top_pairs || []).map((p) => p.pair).join(", ");
+      const p = parseDateParts(h.date);
+      const shortDate = h.short_date || p.shortDate;
+      const dayFull = h.day_full || p.dayFull;
+      const pairs = (h.top_pairs || []).map((x) => x.pair).join(", ");
       const labelMap = {
         EXACT: "★ GOLD: EXACT PAIR",
         REVERSE: "◆ EMERALD: REVERSE (R)",
@@ -353,7 +540,7 @@ function renderHistory() {
       return `
         <div class="hist-row ${h.outcome}">
           <div>
-            <strong>Session #${h.session_id}</strong> (${h.date} ${h.session}) — Actual: <b style="font-size:16px">${h.actual}</b>
+            <strong>${shortDate} (${dayFull}) • ${h.session}</strong> — Actual: <b style="font-size:16px">${h.actual}</b>
             <div class="muted small">
               Anchors: <b>${h.primary_anchor?.digit}</b> & <b>${h.secondary_anchor?.digit}</b> • Top Pairs: ${pairs}
             </div>
@@ -389,14 +576,13 @@ function renderModels() {
     .join("");
 }
 
-function renderAll() {
+function renderPredictionViews() {
   renderRadar();
   renderUpcoming();
-  renderHistory();
+  renderWinLog();
   renderModels();
 }
 
-// Event Listeners
 document.addEventListener("DOMContentLoaded", () => {
   const cfg = getConfig();
   if (cfg.owner) document.getElementById("ghOwner").value = cfg.owner;
@@ -406,6 +592,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("logDrawForm").addEventListener("submit", handleLogDraw);
   document.getElementById("refreshBtn").addEventListener("click", fetchRepoData);
+
+  document.getElementById("historyYearSelect").addEventListener("change", (e) => {
+    STATE.selectedYear = parseInt(e.target.value, 10);
+    renderWinningHistory();
+  });
 
   document.getElementById("settingsBtn").addEventListener("click", () => {
     document.getElementById("settingsModal").classList.remove("hidden");
@@ -448,7 +639,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".filter-chip").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       STATE.activeFilter = btn.dataset.filter;
-      renderHistory();
+      renderWinLog();
     });
   });
 
