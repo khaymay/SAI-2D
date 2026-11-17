@@ -26,12 +26,31 @@ function saveConfig(cfg) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
 }
 
-function formatYangonTimestamp(isoOrFallback) {
-  if (!isoOrFallback) return "Ready (MMT)";
-  const dt = new Date(isoOrFallback);
+function formatYangonTimestamp(predObj) {
+  if (!predObj) return "Ready (MMT)";
+  const raw = predObj.updated_at_iso || predObj.updated_at;
+  if (!raw) return "Ready (MMT)";
+
+  let dt = new Date(raw);
+
+  // Fallback parser for strings like "17 Nov • 05:41 UTC"
   if (Number.isNaN(dt.getTime())) {
-    return String(isoOrFallback).replace("UTC", "MMT");
+    const match = String(raw).match(/(\d{1,2})\s+([A-Za-z]{3})\s+•\s+(\d{1,2}):(\d{2})\s*UTC/i);
+    if (match) {
+      const day = parseInt(match[1], 10);
+      const monIdx = MONTHS_SHORT.findIndex((m) => m.toLowerCase() === match[2].toLowerCase());
+      const hr = parseInt(match[3], 10);
+      const min = parseInt(match[4], 10);
+      if (monIdx >= 0) {
+        dt = new Date(Date.UTC(new Date().getFullYear(), monIdx, day, hr, min));
+      }
+    }
   }
+
+  if (Number.isNaN(dt.getTime())) {
+    return String(raw);
+  }
+
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Yangon",
     day: "numeric",
@@ -114,8 +133,7 @@ async function fetchRepoData() {
 
     if (predRes.ok) {
       STATE.predictions = await predRes.json();
-      const stamp = STATE.predictions.updated_at_iso || STATE.predictions.updated_at;
-      syncEl.textContent = formatYangonTimestamp(stamp);
+      syncEl.textContent = formatYangonTimestamp(STATE.predictions);
       renderPredictionViews();
     } else {
       syncEl.textContent = "Waiting for Action";
@@ -242,7 +260,6 @@ function renderWinningHistory() {
   const container = document.getElementById("winningMonthGrid");
   if (!STATE.drawsRows.length || STATE.selectedYear === null) return;
 
-  // Map all recorded draws in selected Year & Month
   const lookup = {};
   STATE.drawsRows.forEach((r) => {
     const p = parseDateParts(r.Date);
@@ -254,17 +271,15 @@ function renderWinningHistory() {
     }
   });
 
-  // Build chronological weeks from the 1st to the last day of the month (Mon-Fri)
   const daysInMonth = new Date(STATE.selectedYear, STATE.selectedMonth + 1, 0).getDate();
   const weeks = [];
   let currentWeek = null;
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dt = new Date(STATE.selectedYear, STATE.selectedMonth, day);
-    const dow = dt.getDay(); // 0=Sun..6=Sat
-    if (dow === 0 || dow === 6) continue; // Skip weekends
+    const dow = dt.getDay();
+    if (dow === 0 || dow === 6) continue;
 
-    // Start a new week block on Monday or on the first weekday of the month
     if (!currentWeek || dow === 1) {
       currentWeek = {
         startDay: day,
@@ -288,7 +303,6 @@ function renderWinningHistory() {
     return;
   }
 
-  // Render chronologically from 1st -> 31st, 1 compact card per week
   container.innerHTML = weeks
     .map(
       (wk, idx) => `
