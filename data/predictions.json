@@ -1,6 +1,6 @@
 {
   "app_name": "SAI 2D",
-  "updated_at": "17 Nov \u2022 12:33 PM MMT",
+  "updated_at": "17 Nov \u2022 1:49 PM MMT",
   "model_weights": {
     "TabPFN_3.5": 0.2,
     "LightGBM": 0.2,
@@ -1359,5 +1359,5 @@
       "hit_secondary_anchor": false
     }
   ],
-  "updated_at_iso": "2026-11-17T12:33:22.701988+06:30"
+  "updated_at_iso": "2026-11-17T13:49:55.435524+06:30"
 }
