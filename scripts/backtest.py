@@ -15,17 +15,20 @@ POWER_PAIRS = {5, 50, 16, 61, 27, 72, 38, 83, 49, 94}
 NATKHAT_PAIRS = {7, 70, 18, 81, 24, 42, 35, 53, 69, 96}
 BROTHER_PAIRS = {1, 10, 12, 21, 23, 32, 34, 43, 45, 54, 56, 65, 67, 76, 78, 87, 89, 98, 9, 90}
 
+# Precomputed (10, 10) lookup matrix of Brake = (t + u) % 10
+BRAKE_IDX = (np.arange(10)[:, None] + np.arange(10)[None, :]) % 10
+
 
 def get_family_id(num: int) -> int:
     if num // 10 == num % 10:
-        return 1  # Double / Apuu
+        return 1
     if num in POWER_PAIRS:
-        return 2  # Power
+        return 2
     if num in NATKHAT_PAIRS:
-        return 3  # Natkhat
+        return 3
     if num in BROTHER_PAIRS:
-        return 4  # Brother / Nyiko
-    return 0      # Neutral
+        return 4
+    return 0
 
 
 def build_feature_sets(data: pd.DataFrame):
@@ -47,7 +50,6 @@ def build_feature_sets(data: pd.DataFrame):
         d[f"lag_{lag}_units"] = s % 10
         d[f"lag_{lag}_brake"] = (d[f"lag_{lag}_tens"] + d[f"lag_{lag}_units"]) % 10
 
-    # Transition-type & intraday/overnight interaction features
     d["is_intraday_am_to_pm"] = (d["Is_PM"] == 1).astype(float)
     d["is_overnight_pm_to_am"] = ((d["Is_PM"] == 0) & (d["DayOfWeek"] != 0)).astype(float)
     d["is_monday_open"] = ((d["Is_PM"] == 0) & (d["DayOfWeek"] == 0)).astype(float)
@@ -166,13 +168,9 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     brakes = (tens + units) % 10
 
     weights = 0.985 ** np.arange(n_hist - 1, -1, -1)
-    p_t = np.ones(10) * 1.5
-    p_u = np.ones(10) * 1.5
-    p_b = np.ones(10) * 1.5
-    for idx in range(n_hist):
-        p_t[tens[idx]] += weights[idx]
-        p_u[units[idx]] += weights[idx]
-        p_b[brakes[idx]] += weights[idx]
+    p_t = (np.bincount(tens, weights=weights, minlength=10) + 1.5)
+    p_u = (np.bincount(units, weights=weights, minlength=10) + 1.5)
+    p_b = (np.bincount(brakes, weights=weights, minlength=10) + 1.5)
     p_t /= p_t.sum()
     p_u /= p_u.sum()
     p_b /= p_b.sum()
@@ -191,20 +189,14 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     last_t, last_u = last_num // 10, last_num % 10
     t_mat = np.ones((10, 10)) * 2.0
     u_mat = np.ones((10, 10)) * 2.0
-    for i in range(n_hist - 1):
-        t_mat[tens[i], tens[i + 1]] += 1.0
-        u_mat[units[i], units[i + 1]] += 1.0
+    np.add.at(t_mat, (tens[:-1], tens[1:]), 1.0)
+    np.add.at(u_mat, (units[:-1], units[1:]), 1.0)
     t_mat /= t_mat.sum(axis=1, keepdims=True)
     u_mat /= u_mat.sum(axis=1, keepdims=True)
     p_markov = np.outer(t_mat[last_t], u_mat[last_u]).flatten()
 
-    grid = np.zeros(100)
-    for num in range(100):
-        t, u = num // 10, num % 10
-        b = (t + u) % 10
-        pos_score = p_t[t] * p_u[u] * (p_b[b] * 10.0)
-        grid[num] = 0.40 * pos_score + 0.35 * p_exact_dow[num] + 0.25 * p_markov[num]
-
+    pos_score = (np.outer(p_t, p_u) * (p_b[BRAKE_IDX] * 10.0)).flatten()
+    grid = 0.40 * pos_score + 0.35 * p_exact_dow + 0.25 * p_markov
     grid = np.maximum(grid, 1e-6)
     return grid / grid.sum()
 
@@ -220,17 +212,17 @@ def fit_three_heads(X_train: pd.DataFrame, y_num: np.ndarray):
         for target in (y_t, y_u, y_b):
             if m_name == "LightGBM":
                 clf = lgb.LGBMClassifier(
-                    objective="multiclass", num_class=10, n_estimators=120,
+                    objective="multiclass", num_class=10, n_estimators=100,
                     learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
-                    min_child_samples=25, random_state=42, verbose=-1
+                    min_child_samples=25, n_jobs=-1, random_state=42, verbose=-1
                 )
             elif m_name == "CatBoost":
                 clf = CatBoostClassifier(
-                    iterations=250, learning_rate=0.04, depth=4,
-                    loss_function="MultiClass", random_seed=42, verbose=0
+                    iterations=120, learning_rate=0.05, depth=4,
+                    loss_function="MultiClass", thread_count=-1, random_seed=42, verbose=0
                 )
             else:
-                clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
+                clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=500))
             clf.fit(X_train, target)
             heads.append(clf)
         fitted[m_name] = tuple(heads)
@@ -238,11 +230,7 @@ def fit_three_heads(X_train: pd.DataFrame, y_num: np.ndarray):
 
 
 def combine_t_u_brake(pt: np.ndarray, pu: np.ndarray, pb: np.ndarray) -> np.ndarray:
-    grid = np.zeros(100)
-    for num in range(100):
-        t, u = num // 10, num % 10
-        b = (t + u) % 10
-        grid[num] = pt[t] * pu[u] * (pb[b] * 10.0)
+    grid = (np.outer(pt, pu) * (pb[BRAKE_IDX] * 10.0)).flatten()
     grid = np.maximum(grid, 1e-8)
     return grid / grid.sum()
 
@@ -296,7 +284,7 @@ def main():
     n_total = len(df)
     eval_window = min(300, n_total - 200)
     start_idx = n_total - eval_window
-    step_size = 15  # Retrain every 15 draws across the 300-draw out-of-sample window
+    step_size = 50  # 6 walk-forward folds across the 300-draw window (~20s total)
 
     configs = [
         "V1_Current_Baseline",
@@ -309,7 +297,6 @@ def main():
         for c in configs
     }
 
-    # Multi-tier adaptive points for V4 (3=Exact, 2=Reverse, 1=Anchor)
     v4_points = {m: 0.0 for m in MODELS}
     v4_evals = {m: 0.0 for m in MODELS}
 
@@ -321,42 +308,44 @@ def main():
         models_base = fit_three_heads(feat_df.loc[train_mask, base_cols], y_train)
         models_ext = fit_three_heads(feat_df.loc[train_mask, ext_cols], y_train)
 
-        for idx in range(fold_start, fold_end):
+        X_base_slice = feat_df.loc[fold_start:fold_end - 1, base_cols]
+        X_ext_slice = feat_df.loc[fold_start:fold_end - 1, ext_cols]
+
+        # Batch predict across the entire fold at once
+        probs_base = {
+            m: tuple(clf.predict_proba(X_base_slice) for clf in heads)
+            for m, heads in models_base.items()
+        }
+        probs_ext = {
+            m: tuple(clf.predict_proba(X_ext_slice) for clf in heads)
+            for m, heads in models_ext.items()
+        }
+
+        for offset, idx in enumerate(range(fold_start, fold_end)):
             actual = int(df.loc[idx, "Winning_Number"])
             hist_slice = df.iloc[:idx]
             target_row = df.iloc[idx]
             p_bayes = predict_bayesian_markov(hist_slice, target_row)
 
-            X_base_next = feat_df.loc[[idx], base_cols]
-            X_ext_next = feat_df.loc[[idx], ext_cols]
-
-            # V1: Baseline (2 heads: Tens x Units, base features, equal blend)
+            # V1: Baseline
             grids_v1 = {"Bayesian_Markov": p_bayes}
-            for m_name, (ct, cu, _) in models_base.items():
-                pt = ct.predict_proba(X_base_next)[0]
-                pu = cu.predict_proba(X_base_next)[0]
-                grids_v1[m_name] = np.outer(pt, pu).flatten()
+            for m_name, (pt_arr, pu_arr, _) in probs_base.items():
+                grids_v1[m_name] = np.outer(pt_arr[offset], pu_arr[offset]).flatten()
             p_v1 = sum(grids_v1.values()) / len(grids_v1)
 
-            # V2: + 3rd Brake Head (Tens x Units x Brake, base features, equal blend)
+            # V2: + 3rd Brake Head
             grids_v2 = {"Bayesian_Markov": p_bayes}
-            for m_name, (ct, cu, cb) in models_base.items():
-                pt = ct.predict_proba(X_base_next)[0]
-                pu = cu.predict_proba(X_base_next)[0]
-                pb = cb.predict_proba(X_base_next)[0]
-                grids_v2[m_name] = combine_t_u_brake(pt, pu, pb)
+            for m_name, (pt_arr, pu_arr, pb_arr) in probs_base.items():
+                grids_v2[m_name] = combine_t_u_brake(pt_arr[offset], pu_arr[offset], pb_arr[offset])
             p_v2 = sum(grids_v2.values()) / len(grids_v2)
 
             # V3: + Transition splits & 2D Number-Family features
             grids_v3 = {"Bayesian_Markov": p_bayes}
-            for m_name, (ct, cu, cb) in models_ext.items():
-                pt = ct.predict_proba(X_ext_next)[0]
-                pu = cu.predict_proba(X_ext_next)[0]
-                pb = cb.predict_proba(X_ext_next)[0]
-                grids_v3[m_name] = combine_t_u_brake(pt, pu, pb)
+            for m_name, (pt_arr, pu_arr, pb_arr) in probs_ext.items():
+                grids_v3[m_name] = combine_t_u_brake(pt_arr[offset], pu_arr[offset], pb_arr[offset])
             p_v3 = sum(grids_v3.values()) / len(grids_v3)
 
-            # V4: + Temperature Sharpness Calibration & Multi-Tier Auto-Weighting
+            # V4: + Sharpness Calibration & Multi-Tier Auto-Weighting
             raw_w = {}
             for m in MODELS:
                 avg_pts = (v4_points[m] + 20.0 * 0.25) / (v4_evals[m] + 20.0)
@@ -370,7 +359,6 @@ def main():
                 p_v4 += w_v4[m] * cal_g
             p_v4 /= p_v4.sum()
 
-            # Update V4 online multi-tier scores using actual result
             act_digits = {actual // 10, actual % 10}
             rev_num = (actual % 10) * 10 + (actual // 10)
             for m in MODELS:
