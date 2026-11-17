@@ -72,7 +72,7 @@ function parseDateParts(dateStr) {
     year: y,
     monthIndex: m - 1,
     day: d,
-    shortDate: `${d}${MONTHS_SHORT[m - 1]}`,
+    shortDate: `${d} ${MONTHS_SHORT[m - 1]}`,
     dayShort: DAYS_SHORT[dt.getDay()],
     dayFull: DAYS_FULL[dt.getDay()],
     dow: dt.getDay(),
@@ -113,8 +113,54 @@ function decodeBase64Unicode(b64) {
 async function fetchRepoData() {
   const syncEl = document.getElementById("syncStatus");
   syncEl.textContent = "Syncing...";
-  const cacheBust = `?t=${Date.now()}`;  try { const [predRes, csvRes] = await Promise.all([ fetch(`data/predictions.json${cacheBust}`),
-      fetch(`data/draws.csv${cacheBust}`), ]);  if (csvRes.ok) { STATE.drawsCsvRaw = await csvRes.text(); STATE.drawsRows = parseCsv(STATE.drawsCsvRaw); initHistorySelectors(); populateSessionDropdown(); renderCurrentWeek(); renderWinningHistory(); }  if (predRes.ok) { STATE.predictions = await predRes.json(); syncEl.textContent = formatYangonTimestamp(STATE.predictions); renderPredictionViews(); } else { syncEl.textContent = "Waiting for Action"; } } catch (err) { syncEl.textContent = "Sync error"; console.error(err); } }  function populateSessionDropdown() { const select = document.getElementById("sessionSelect"); select.innerHTML = ""; const openRows = STATE.drawsRows.filter((r) => !r.Winning_Number \vert{}\vert{} r.Winning_Number === "NaN"); const completedRows = STATE.drawsRows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");  if (completedRows.length > 0) { const last = completedRows[completedRows.length - 1]; const p = parseDateParts(last.Date); document.getElementById("latestBadge").textContent = `Latest: ${p.shortDate} (${p.dayShort})${last.Is_PM === "1" ? "PM" : "AM"} = ${formatNum(last.Winning_Number)}`; }  openRows.slice(0, 10).forEach((r) => { const p = parseDateParts(r.Date); const opt = document.createElement("option"); opt.value = r.Session_ID; opt.textContent = `${p.shortDate} (${p.dayFull}) —${r.Is_PM === "1" ? "PM (4:30)" : "AM (12:01)"}`;
+  const cacheBust = `?t=${Date.now()}`;
+
+  try {
+    const [predRes, csvRes] = await Promise.all([
+      fetch(`data/predictions.json${cacheBust}`),
+      fetch(`data/draws.csv${cacheBust}`),
+    ]);
+
+    if (csvRes.ok) {
+      STATE.drawsCsvRaw = await csvRes.text();
+      STATE.drawsRows = parseCsv(STATE.drawsCsvRaw);
+      initHistorySelectors();
+      populateSessionDropdown();
+      renderCurrentWeek();
+      renderWinningHistory();
+    }
+
+    if (predRes.ok) {
+      STATE.predictions = await predRes.json();
+      syncEl.textContent = formatYangonTimestamp(STATE.predictions);
+      renderPredictionViews();
+    } else {
+      syncEl.textContent = "Waiting for Action";
+    }
+  } catch (err) {
+    syncEl.textContent = "Sync error";
+    console.error(err);
+  }
+}
+
+function populateSessionDropdown() {
+  const select = document.getElementById("sessionSelect");
+  select.innerHTML = "";
+  const openRows = STATE.drawsRows.filter((r) => !r.Winning_Number || r.Winning_Number === "NaN");
+  const completedRows = STATE.drawsRows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
+
+  if (completedRows.length > 0) {
+    const last = completedRows[completedRows.length - 1];
+    const p = parseDateParts(last.Date);
+    document.getElementById("latestBadge").textContent =
+      `Latest: ${p.shortDate} (${p.dayShort}) ${last.Is_PM === "1" ? "PM" : "AM"} = ${formatNum(last.Winning_Number)}`;
+  }
+
+  openRows.slice(0, 10).forEach((r) => {
+    const p = parseDateParts(r.Date);
+    const opt = document.createElement("option");
+    opt.value = r.Session_ID;
+    opt.textContent = `${p.shortDate} (${p.dayFull}) — ${r.Is_PM === "1" ? "PM (4:30)" : "AM (12:01)"}`;
     select.appendChild(opt);
   });
 }
@@ -152,7 +198,7 @@ function renderCurrentWeek() {
     const key = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
     weekDates.push({
       key,
-      dayNum: `${d.getDate()}${MONTHS_SHORT[d.getMonth()]}`,
+      dayNum: `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`,
       dayShort: DAYS_SHORT[d.getDay()],
       am: "—",
       pm: "—",
@@ -168,7 +214,7 @@ function renderCurrentWeek() {
     }
   });
 
-  labelEl.textContent = `${weekDates[0].dayNum} –${weekDates[4].dayNum}`;
+  labelEl.textContent = `${weekDates[0].dayNum} – ${weekDates[4].dayNum}`;
   grid.innerHTML = weekDates.map(renderDayColumnHtml).join("");
 }
 
@@ -244,7 +290,7 @@ function renderWinningHistory() {
     currentWeek.endDay = day;
     const vals = lookup[day] || { am: "—", pm: "—" };
     currentWeek.days.push({
-      dayNum: `${day}${MONTHS_SHORT[STATE.selectedMonth]}`,
+      dayNum: `${day} ${MONTHS_SHORT[STATE.selectedMonth]}`,
       dayShort: DAYS_SHORT[dow],
       am: vals.am,
       pm: vals.pm,
@@ -252,7 +298,7 @@ function renderWinningHistory() {
   }
 
   if (!weeks.length) {
-    container.innerHTML = `<p class="muted">No weekday draws for ${MONTHS_SHORT[STATE.selectedMonth]}${STATE.selectedYear}.</p>`;
+    container.innerHTML = `<p class="muted">No weekday draws for ${MONTHS_SHORT[STATE.selectedMonth]} ${STATE.selectedYear}.</p>`;
     return;
   }
 
@@ -262,7 +308,7 @@ function renderWinningHistory() {
       <div class="week-card">
         <div class="week-card-label">
           <span>Week ${idx + 1}</span>
-          <span>${wk.startDay}–${wk.endDay}${MONTHS_SHORT[STATE.selectedMonth]}</span>
+          <span>${wk.startDay}–${wk.endDay} ${MONTHS_SHORT[STATE.selectedMonth]}</span>
         </div>
         <div class="compact-days-row">
           ${wk.days.map(renderDayColumnHtml).join("")}
@@ -278,12 +324,15 @@ async function githubGetFile(path) {
     throw new Error("Please configure your GitHub token in the ⚙ Gear icon first.");
   }
   const branch = cfg.branch || "main";
-  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}`; const res = await fetch(url, { headers: { Authorization: `Bearer ${cfg.token}`,
+  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${cfg.token}`,
       Accept: "application/vnd.github+json",
     },
   });
   if (!res.ok) {
-    throw new Error(`GitHub API error (${res.status}) reading${path}`);
+    throw new Error(`GitHub API error (${res.status}) reading ${path}`);
   }
   return res.json();
 }
@@ -291,7 +340,11 @@ async function githubGetFile(path) {
 async function githubPutFile(path, contentStr, sha, message) {
   const cfg = getConfig();
   const branch = cfg.branch || "main";
-  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}`; const res = await fetch(url, { method: "PUT", headers: { Authorization: `Bearer ${cfg.token}`,
+  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${cfg.token}`,
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
     },
@@ -304,7 +357,27 @@ async function githubPutFile(path, contentStr, sha, message) {
   });
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    throw new Error(errBody.message || `GitHub commit failed (${res.status})`); } return res.json(); }  async function handleLogDraw(e) { e.preventDefault(); const feedback = document.getElementById("loggerFeedback"); const btn = document.getElementById("submitDrawBtn"); const sid = document.getElementById("sessionSelect").value; const rawVal = document.getElementById("winningInput").value.trim();  if (!/^\d{1,2}$/.test(rawVal)) { feedback.textContent = "Enter a valid 2-digit number from 00 to 99."; return; } const numInt = parseInt(rawVal, 10); const numFormatted = String(numInt).padStart(2, "0");  btn.disabled = true; feedback.textContent = `Saving ${numFormatted} to GitHub...`;
+    throw new Error(errBody.message || `GitHub commit failed (${res.status})`);
+  }
+  return res.json();
+}
+
+async function handleLogDraw(e) {
+  e.preventDefault();
+  const feedback = document.getElementById("loggerFeedback");
+  const btn = document.getElementById("submitDrawBtn");
+  const sid = document.getElementById("sessionSelect").value;
+  const rawVal = document.getElementById("winningInput").value.trim();
+
+  if (!/^\d{1,2}$/.test(rawVal)) {
+    feedback.textContent = "Enter a valid 2-digit number from 00 to 99.";
+    return;
+  }
+  const numInt = parseInt(rawVal, 10);
+  const numFormatted = String(numInt).padStart(2, "0");
+
+  btn.disabled = true;
+  feedback.textContent = `Saving ${numFormatted} to GitHub...`;
 
   try {
     const fileData = await githubGetFile("data/draws.csv");
@@ -322,11 +395,11 @@ async function githubPutFile(path, contentStr, sha, message) {
       "data/draws.csv",
       updatedCsv,
       fileData.sha,
-      `feat(draw): ${p.shortDate} (${p.dayShort}) ${sessLabel} =${numFormatted}`
+      `feat(draw): ${p.shortDate} (${p.dayShort}) ${sessLabel} = ${numFormatted}`
     );
 
     document.getElementById("winningInput").value = "";
-    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} =${numFormatted}! Models are updating (~45s). Tap ↻ shortly.`;
+    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating (~45s). Tap ↻ shortly.`;
     STATE.drawsRows = rows;
     populateSessionDropdown();
     renderCurrentWeek();
@@ -406,12 +479,12 @@ function renderUpcoming() {
             <div class="anchor-pill primary">
               <div class="anchor-label">Primary Anchor</div>
               <div class="anchor-val">${p1.digit}</div>
-              <div class="anchor-meta">${(p1.prob * 100).toFixed(1)}\% •${p1.votes} Models</div>
+              <div class="anchor-meta">${(p1.prob * 100).toFixed(1)}% • ${p1.votes} Models</div>
             </div>
             <div class="anchor-pill">
               <div class="anchor-label">Backup Anchor</div>
               <div class="anchor-val">${p2.digit}</div>
-              <div class="anchor-meta">${(p2.prob * 100).toFixed(1)}\% •${p2.votes} Models</div>
+              <div class="anchor-meta">${(p2.prob * 100).toFixed(1)}% • ${p2.votes} Models</div>
             </div>
           </div>
 
@@ -446,4 +519,175 @@ function renderWinLog() {
     <div class="stat-box"><div class="muted small">Evaluated</div><div class="num">${total}</div></div>
     <div class="stat-box"><div class="muted small">Total Wins</div><div class="num">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
     <div class="stat-box"><div class="muted small">Exact + Reverse</div><div class="num" style="color:#fbbf24">${exact + rev}</div></div>
-    <div class="stat-box"><div class="muted small">Anchor Hits</div><div class="num" style="color:#38bdf
+    <div class="stat-box"><div class="muted small">Anchor Hits</div><div class="num" style="color:#38bdf8">${anchor}</div></div>
+  `;
+
+  const filtered = STATE.activeFilter === "ALL" ? hist : hist.filter((h) => h.outcome === STATE.activeFilter);
+  if (!filtered.length) {
+    listEl.innerHTML = `<p class="muted">No graded predictions in this filter yet. Every forecast is automatically graded here once its result is logged.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered
+    .map((h) => {
+      const p = parseDateParts(h.date);
+      const shortDate = h.short_date || p.shortDate;
+      const dayFull = h.day_full || p.dayFull;
+      const pairs = (h.top_pairs || []).map((x) => x.pair).join(", ");
+
+      const actStr = String(h.actual || "").padStart(2, "0");
+      const revStr = actStr.length === 2 ? `${actStr[1]}${actStr[0]}` : "";
+      const actDigits = new Set(actStr.split("").map((d) => parseInt(d, 10)));
+
+      const allModelsHtml = Object.entries(h.models || {})
+        .map(([mName, m]) => {
+          const mPairs = m.top_pairs || [];
+          const hitExact = mPairs.includes(actStr);
+          const hitRev = !hitExact && revStr !== actStr && mPairs.includes(revStr);
+          const hitAnchor = actDigits.has(Number(m.anchor_digit));
+          const hitBackup = actDigits.has(Number(m.backup_digit));
+
+          let badge = "";
+          let rowCls = "";
+          if (hitExact) {
+            badge = `<span class="mini-hit gold">EXACT</span>`;
+            rowCls = "hit-row";
+          } else if (hitRev) {
+            badge = `<span class="mini-hit emerald">REV</span>`;
+            rowCls = "hit-row";
+          } else if (hitAnchor || hitBackup) {
+            badge = `<span class="mini-hit blue">DIGIT</span>`;
+            rowCls = "hit-row";
+          }
+
+          return `
+            <div class="winlog-model-item ${rowCls}">
+              <div class="winlog-model-top">
+                <strong>${mName.replace("_", " ")}</strong>
+                ${badge}
+              </div>
+              <div class="muted small">
+                Anchor: <b>${m.anchor_digit}</b>${m.backup_digit !== undefined ? ` / ${m.backup_digit}` : ""} • Pairs: <b>${mPairs.join(", ")}</b>
+              </div>
+            </div>`;
+        })
+        .join("");
+
+      const labelMap = {
+        EXACT: "★ GOLD: EXACT",
+        REVERSE: "◆ EMERALD: REVERSE (R)",
+        ANCHOR_HIT: "● BLUE: ANCHOR",
+        MISS: "MISS",
+      };
+
+      return `
+        <div class="hist-row ${h.outcome}">
+          <div class="hist-row-head">
+            <div>
+              <strong>${shortDate} (${dayFull}) • ${h.session}</strong> — Actual: <b style="font-size:16px">${actStr}</b>
+              <div class="muted small">
+                Consensus Anchors: <b>${h.primary_anchor?.digit}</b> & <b>${h.secondary_anchor?.digit}</b> • Consensus Pairs: <b>${pairs}</b>
+              </div>
+            </div>
+            <span class="outcome-tag ${h.outcome}">${labelMap[h.outcome] || h.outcome}</span>
+          </div>
+          ${allModelsHtml ? `<div class="winlog-models-grid">${allModelsHtml}</div>` : ""}
+        </div>`;
+    })
+    .join("");
+}
+
+function renderModels() {
+  const board = document.getElementById("modelLeaderboard");
+  const weights = STATE.predictions?.model_weights || {};
+  const stats = STATE.predictions?.model_stats || {};
+
+  board.innerHTML = Object.keys(weights)
+    .map((mName) => {
+      const w = weights[mName] ?? 0.2;
+      const st = stats[mName] || { evaluated: 0, anchor_hits: 0, exact_hits: 0, reverse_hits: 0 };
+      const rate = st.evaluated ? ((st.anchor_hits / st.evaluated) * 100).toFixed(1) + "%" : "—";
+      return `
+        <div class="model-stat-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>${mName.replace("_", " ")}</strong>
+            <span class="chip">${(w * 100).toFixed(1)}% wt</span>
+          </div>
+          <div class="muted small" style="margin-top:7px">
+            Anchor Hit Rate: <b>${rate}</b> (${st.anchor_hits}/${st.evaluated})<br/>
+            Exact: <b>${st.exact_hits}</b> • Reverse (R): <b>${st.reverse_hits}</b>
+          </div>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderPredictionViews() {
+  renderRadar();
+  renderUpcoming();
+  renderWinLog();
+  renderModels();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const cfg = getConfig();
+  if (cfg.owner) document.getElementById("ghOwner").value = cfg.owner;
+  if (cfg.repo) document.getElementById("ghRepo").value = cfg.repo;
+  if (cfg.branch) document.getElementById("ghBranch").value = cfg.branch;
+  if (cfg.token) document.getElementById("ghToken").value = cfg.token;
+
+  document.getElementById("logDrawForm").addEventListener("submit", handleLogDraw);
+  document.getElementById("refreshBtn").addEventListener("click", fetchRepoData);
+
+  document.getElementById("historyYearSelect").addEventListener("change", (e) => {
+    STATE.selectedYear = parseInt(e.target.value, 10);
+    renderWinningHistory();
+  });
+
+  document.getElementById("settingsBtn").addEventListener("click", () => {
+    document.getElementById("settingsModal").classList.remove("hidden");
+  });
+  document.getElementById("closeSettingsBtn").addEventListener("click", () => {
+    document.getElementById("settingsModal").classList.add("hidden");
+  });
+  document.getElementById("settingsForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    saveConfig({
+      owner: document.getElementById("ghOwner").value.trim(),
+      repo: document.getElementById("ghRepo").value.trim(),
+      branch: document.getElementById("ghBranch").value.trim() || "main",
+      token: document.getElementById("ghToken").value.trim(),
+    });
+    document.getElementById("settingsModal").classList.add("hidden");
+    document.getElementById("loggerFeedback").textContent = "GitHub connection saved locally in browser.";
+  });
+
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      STATE.activeRadar = btn.dataset.radar;
+      renderRadar();
+    });
+  });
+
+  document.querySelectorAll(".view-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".view-tab").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".view-panel").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById(btn.dataset.view).classList.add("active");
+    });
+  });
+
+  document.querySelectorAll(".filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filter-chip").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      STATE.activeFilter = btn.dataset.filter;
+      renderWinLog();
+    });
+  });
+
+  fetchRepoData();
+});
