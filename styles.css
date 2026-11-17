@@ -22,6 +22,8 @@
   --emerald-bg: rgba(16, 185, 129, 0.16);
   --blue-hit: #38bdf8;
   --blue-bg: rgba(56, 189, 248, 0.16);
+  --purple-hit: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.16);
   --danger: #ef4444;
   --radius: 14px;
 }
@@ -363,7 +365,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-we
 
 .winlog-models-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
   gap: 7px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
@@ -376,14 +378,24 @@ details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-we
   font-size: 12px;
 }
 .winlog-model-item.hit-row {
-  border-color: rgba(56, 189, 248, 0.45);
+  border-color: rgba(56, 189, 248, 0.48);
   background: rgba(56, 189, 248, 0.08);
+}
+.winlog-model-item.hit-row-soft {
+  border-color: rgba(167, 139, 250, 0.38);
+  background: rgba(167, 139, 250, 0.06);
 }
 .winlog-model-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2px;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+.winlog-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .mini-hit {
   font-size: 9px;
@@ -394,6 +406,24 @@ details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-we
 .mini-hit.gold { background: var(--gold-bg); color: #fbbf24; border: 1px solid var(--gold); }
 .mini-hit.emerald { background: var(--emerald-bg); color: #34d399; border: 1px solid var(--emerald); }
 .mini-hit.blue { background: var(--blue-bg); color: #7dd3fc; border: 1px solid var(--blue-hit); }
+.mini-hit.pos { background: var(--purple-bg); color: #c4b5fd; border: 1px solid var(--purple-hit); }
+.mini-hit.digit { background: rgba(148, 163, 184, 0.14); color: #cbd5e1; border: 1px solid #475569; }
+
+.pts-pill {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.pts-pill.earned {
+  background: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+}
+.pts-pill.zero {
+  background: rgba(148, 163, 184, 0.10);
+  color: var(--muted);
+  font-weight: 600;
+}
 
 .outcome-tag {
   font-size: 10px; font-weight: 800; padding: 4px 9px; border-radius: 999px;
