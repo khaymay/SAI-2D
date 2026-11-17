@@ -325,7 +325,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-we
   background: var(--surface-2); padding: 5px 8px; border-radius: 7px;
 }
 
-/* Win Log & Highlights */
+/* Win Log & All-Models Breakdown */
 .score-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -339,13 +339,18 @@ details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-we
   padding: 10px 12px;
 }
 .stat-box .num { font-size: 20px; font-weight: 800; }
-.history-list { display: grid; gap: 8px; }
+.history-list { display: grid; gap: 10px; }
 .hist-row {
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 5px solid var(--border);
-  border-radius: 11px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hist-row-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -355,6 +360,40 @@ details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-we
 .hist-row.EXACT { border-left-color: var(--gold); background: linear-gradient(90deg, var(--gold-bg), var(--surface) 45%); }
 .hist-row.REVERSE { border-left-color: var(--emerald); background: linear-gradient(90deg, var(--emerald-bg), var(--surface) 45%); }
 .hist-row.ANCHOR_HIT { border-left-color: var(--blue-hit); background: linear-gradient(90deg, var(--blue-bg), var(--surface) 45%); }
+
+.winlog-models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.winlog-model-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+.winlog-model-item.hit-row {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.08);
+}
+.winlog-model-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.mini-hit {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.mini-hit.gold { background: var(--gold-bg); color: #fbbf24; border: 1px solid var(--gold); }
+.mini-hit.emerald { background: var(--emerald-bg); color: #34d399; border: 1px solid var(--emerald); }
+.mini-hit.blue { background: var(--blue-bg); color: #7dd3fc; border: 1px solid var(--blue-hit); }
 
 .outcome-tag {
   font-size: 10px; font-weight: 800; padding: 4px 9px; border-radius: 999px;
