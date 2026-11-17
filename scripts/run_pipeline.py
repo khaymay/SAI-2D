@@ -13,6 +13,7 @@ DRAWS_PATH = "data/draws.csv"
 PRED_PATH = "data/predictions.json"
 MODEL_NAMES = ["TabPFN_3.5", "LightGBM", "CatBoost", "L2_Logistic", "Bayesian_Markov"]
 YANGON_TZ = timezone(timedelta(hours=6, minutes=30))
+ROLLING_WINDOW = 600
 
 # Precomputed (10, 10) lookup matrix of Brake = (t + u) % 10
 BRAKE_IDX = (np.arange(10)[:, None] + np.arange(10)[None, :]) % 10
@@ -86,7 +87,7 @@ def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFra
 
 
 def build_features(data: pd.DataFrame) -> pd.DataFrame:
-    """Lean, leak-free momentum + Day-of-Week x AM/PM positional rate features."""
+    """Leak-free momentum + Day-of-Week x AM/PM positional rate features."""
     d = data.copy()
     d["Date_dt"] = pd.to_datetime(d["Date"])
     d["DayOfWeek"] = d["Date_dt"].dt.dayofweek
@@ -167,7 +168,6 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_drought_radar(hist: pd.DataFrame) -> dict:
-    """Visual UI radar only (decoupled from model predictions)."""
     last_sid = int(hist["Session_ID"].max())
     tens_s = hist["Winning_Number"].astype(int) // 10
     units_s = hist["Winning_Number"].astype(int) % 10
@@ -194,27 +194,18 @@ def compute_drought_radar(hist: pd.DataFrame) -> dict:
 
 
 def combine_t_u_brake(pt: np.ndarray, pu: np.ndarray, pb: np.ndarray) -> np.ndarray:
-    """Combines Tens, Units, and Modulo-10 Brake heads into a normalized 100-pair distribution."""
     grid = (np.outer(pt, pu) * (pb[BRAKE_IDX] * 10.0)).flatten()
     grid = np.maximum(grid, 1e-8)
     return grid / grid.sum()
 
 
-def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
-    """Momentum-balanced Dirichlet-Markov + Day-of-Week x Session model."""
-    n_hist = len(hist)
+def predict_bayesian_pure_transition(
+    hist: pd.DataFrame, target_row: pd.Series, is_immediate_next: bool = True
+) -> np.ndarray:
+    """Diverse Model 1: Pure Day-of-Week x Session + Intraday/Overnight Markov Transition."""
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
     units = nums % 10
-    brakes = (tens + units) % 10
-
-    weights = 0.985 ** np.arange(n_hist - 1, -1, -1)
-    p_t = np.bincount(tens, weights=weights, minlength=10) + 1.5
-    p_u = np.bincount(units, weights=weights, minlength=10) + 1.5
-    p_b = np.bincount(brakes, weights=weights, minlength=10) + 1.5
-    p_t /= p_t.sum()
-    p_u /= p_u.sum()
-    p_b /= p_b.sum()
 
     d_dt = pd.to_datetime(hist["Date"])
     dow_hist = d_dt.dt.dayofweek.values
@@ -222,28 +213,51 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     t_dow = pd.to_datetime(target_row["Date"]).dayofweek
     t_pm = int(target_row["Is_PM"])
 
+    # 1. Smoothed Day-of-Week x Session empirical distribution (+0.60 prior for calibrated log-loss)
     mask = (dow_hist == t_dow) & (is_pm_hist == t_pm)
     sub_nums = nums[mask]
-    p_exact_dow = (np.bincount(sub_nums, minlength=100) + 0.35) / (len(sub_nums) + 35.0)
+    p_exact_dow = (np.bincount(sub_nums, minlength=100) + 0.60) / (len(sub_nums) + 60.0)
 
+    if not is_immediate_next:
+        # Future horizon slots (Slots 2-8) use pure calendar-slot + recent momentum without fabricated lags
+        weights = 0.985 ** np.arange(len(nums) - 1, -1, -1)
+        p_t = (np.bincount(tens, weights=weights, minlength=10) + 1.5)
+        p_u = (np.bincount(units, weights=weights, minlength=10) + 1.5)
+        p_t /= p_t.sum()
+        p_u /= p_u.sum()
+        p_mom = np.outer(p_t, p_u).flatten()
+        grid = 0.55 * p_exact_dow + 0.45 * p_mom
+        grid = np.maximum(grid, 1e-6)
+        return grid / grid.sum()
+
+    # 2. Separate Intraday (AM->PM) vs Overnight (PM->AM) 1st-order transition matrices
     last_num = int(nums[-1])
     last_t, last_u = last_num // 10, last_num % 10
     t_mat = np.ones((10, 10)) * 2.0
     u_mat = np.ones((10, 10)) * 2.0
-    np.add.at(t_mat, (tens[:-1], tens[1:]), 1.0)
-    np.add.at(u_mat, (units[:-1], units[1:]), 1.0)
+    trans_mask = (is_pm_hist[1:] == t_pm)
+    np.add.at(t_mat, (tens[:-1][trans_mask], tens[1:][trans_mask]), 1.0)
+    np.add.at(u_mat, (units[:-1][trans_mask], units[1:][trans_mask]), 1.0)
     t_mat /= t_mat.sum(axis=1, keepdims=True)
     u_mat /= u_mat.sum(axis=1, keepdims=True)
     p_markov = np.outer(t_mat[last_t], u_mat[last_u]).flatten()
 
-    pos_score = (np.outer(p_t, p_u) * (p_b[BRAKE_IDX] * 10.0)).flatten()
-    grid = 0.40 * pos_score + 0.35 * p_exact_dow + 0.25 * p_markov
+    # 3. Same-day AM digit carryover boost when predicting PM
+    p_intraday = np.ones(100)
+    if t_pm == 1:
+        am_digits = {last_t, last_u}
+        for num in range(100):
+            if (num // 10) in am_digits or (num % 10) in am_digits:
+                p_intraday[num] = 1.25
+    p_intraday /= p_intraday.sum()
+
+    grid = 0.45 * p_exact_dow + 0.40 * p_markov + 0.15 * p_intraday
     grid = np.maximum(grid, 1e-6)
     return grid / grid.sum()
 
 
 def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
-    """Fits 3 heads (Tens, Units, Modulo-10 Brake) per ML model family."""
+    """Fits 3 heads (Tens, Units, Modulo-10 Brake) on the active 600-draw regime window."""
     y_t = y_num // 10
     y_u = y_num % 10
     y_b = (y_t + y_u) % 10
@@ -252,9 +266,9 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
     lgb_heads = []
     for target in (y_t, y_u, y_b):
         clf = lgb.LGBMClassifier(
-            objective="multiclass", num_class=10, n_estimators=120,
+            objective="multiclass", num_class=10, n_estimators=100,
             learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
-            min_child_samples=25, n_jobs=-1, random_state=42, verbose=-1
+            min_child_samples=20, n_jobs=-1, random_state=42, verbose=-1
         )
         clf.fit(X_train, target)
         lgb_heads.append(clf)
@@ -263,7 +277,7 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
     cb_heads = []
     for target in (y_t, y_u, y_b):
         clf = CatBoostClassifier(
-            iterations=200, learning_rate=0.04, depth=4,
+            iterations=150, learning_rate=0.05, depth=4,
             loss_function="MultiClass", thread_count=-1, random_seed=42, verbose=0
         )
         clf.fit(X_train, target)
@@ -272,7 +286,7 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
 
     lr_heads = []
     for target in (y_t, y_u, y_b):
-        clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
+        clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=600))
         clf.fit(X_train, target)
         lr_heads.append(clf)
     models["L2_Logistic"] = tuple(lr_heads)
@@ -363,7 +377,6 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
-    # Multi-tier composite auto-weighting (3 pts Exact, 2 pts Reverse, 1 pt Anchor Digit)
     raw_weights = {}
     for m in MODEL_NAMES:
         st = state["model_stats"].get(
@@ -398,7 +411,9 @@ def main():
     ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
     feature_cols = [c for c in feat_df.columns if c not in ignore_cols]
 
-    train_df = feat_df[(feat_df["Session_ID"] >= 15) & (feat_df["Winning_Number"].notna())]
+    # Train exclusively on the most recent 600 completed draws (validated winner C2)
+    completed_feats = feat_df[(feat_df["Session_ID"] >= 15) & (feat_df["Winning_Number"].notna())]
+    train_df = completed_feats.tail(ROLLING_WINDOW)
     X_train = train_df[feature_cols]
     y_train_num = train_df["Winning_Number"].astype(int).values
 
@@ -411,18 +426,36 @@ def main():
     w_sum = sum(active_weights.values())
     active_weights = {m: w / w_sum for m, w in active_weights.items()}
 
-    sim_df = df.copy()
-    open_sids = sim_df.loc[sim_df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:8]
+    open_sids = df.loc[df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:8]
+    recent_hist_600 = hist.tail(ROLLING_WINDOW).copy()
+    lag_cols = [c for c in feature_cols if c.startswith("lag_")]
+
+    # Confirmed feature state right after the latest real draw
+    first_open_mask = feat_df["Session_ID"] == open_sids[0]
+    confirmed_state_row = feat_df.loc[first_open_mask, feature_cols].iloc[0].copy()
+
     new_upcoming = []
+    for step_idx, sid in enumerate(open_sids):
+        is_immediate = (step_idx == 0)
+        row_mask = feat_df["Session_ID"] == sid
+        target_row = df.loc[row_mask].iloc[0]
 
-    for sid in open_sids:
-        step_feats = build_features(sim_df)
-        row_mask = step_feats["Session_ID"] == sid
-        X_next = step_feats.loc[row_mask, feature_cols]
-        target_row = sim_df.loc[row_mask].iloc[0]
+        if is_immediate:
+            X_next = feat_df.loc[row_mask, feature_cols]
+        else:
+            # For Slots 2-8, use known calendar + current confirmed momentum without hallucinating winners
+            X_next = feat_df.loc[row_mask, feature_cols].copy()
+            for col in feature_cols:
+                if col not in {"Year", "Day_of_Year", "Is_PM", "DayOfWeek", "sin_doy", "cos_doy"}:
+                    X_next[col] = confirmed_state_row[col]
+            for lcol in lag_cols:
+                X_next[lcol] = np.nan
 
-        sim_hist = sim_df[sim_df["Winning_Number"].notna()].copy()
-        model_grids = {"Bayesian_Markov": predict_bayesian_markov(sim_hist, target_row)}
+        model_grids = {
+            "Bayesian_Markov": predict_bayesian_pure_transition(
+                recent_hist_600, target_row, is_immediate_next=is_immediate
+            )
+        }
 
         for m_name, (clf_t, clf_u, clf_b) in ml_models.items():
             pt = clf_t.predict_proba(X_next)[0]
@@ -474,8 +507,6 @@ def main():
             if len(anchor_filtered_pairs) >= 6:
                 break
 
-        sim_df.loc[row_mask, "Winning_Number"] = float(int(anchor_filtered_pairs[0]["pair"]))
-
         raw_date = str(target_row["Date"])
         new_upcoming.append({
             "session_id": sid,
@@ -484,6 +515,7 @@ def main():
             "day": format_day_short(raw_date),
             "day_full": format_day_name(raw_date),
             "session": "PM" if int(target_row["Is_PM"]) == 1 else "AM",
+            "forecast_mode": "LIVE_LAG" if is_immediate else "BASE_CALENDAR",
             "primary_anchor": {
                 "digit": d1,
                 "prob": round(float(p_anchor_consensus[d1]), 4),
@@ -507,7 +539,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions updated with 3-head Brake model & multi-tier weights.")
+    print("[OK] SAI 2D Rolling-600 3-Head Pure-Transition predictions updated.")
 
 
 if __name__ == "__main__":
