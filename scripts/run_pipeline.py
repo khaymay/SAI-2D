@@ -48,18 +48,7 @@ def default_model_stat() -> dict:
 def load_existing_predictions() -> dict:
     if os.path.exists(PRED_PATH):
         with open(PRED_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            for m in MODEL_NAMES:
-                st = data.setdefault("model_stats", {}).setdefault(m, default_model_stat())
-                for k, v in default_model_stat().items():
-                    st.setdefault(k, v)
-                # Backfill total_points if migrating from legacy counts
-                if st["total_points"] == 0.0 and st["evaluated"] > 0:
-                    st["total_points"] = round(
-                        3.0 * st["exact_hits"] + 2.0 * st["reverse_hits"] + 1.0 * st["anchor_hits"],
-                        2,
-                    )
-            return data
+            return json.load(f)
     return {
         "app_name": "SAI 2D",
         "updated_at": None,
@@ -397,7 +386,11 @@ def evaluate_model_draw(m_info: dict, actual: int) -> dict:
 
 
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
-    """Grades completed draws using Equal Dual-Anchor + Cumulative Per-Pair Granular Scoring."""
+    """
+    Grades newly completed draws AND re-evaluates all existing history entries
+    using the unified Dual-Anchor + Cumulative Per-Pair rules so 5-Model Committee
+    Weights always stay 100% synchronized.
+    """
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
         int(r["Session_ID"]): r
@@ -430,25 +423,6 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
             else:
                 outcome = "MISS"
 
-            for m_name, m_info in pred.get("models", {}).items():
-                st = state["model_stats"].setdefault(m_name, default_model_stat())
-                ev = evaluate_model_draw(m_info, actual)
-
-                st["evaluated"] += 1
-                st["total_points"] = round(st["total_points"] + ev["earned"], 2)
-                if ev["hit_any_anchor"]:
-                    st["anchor_hits"] += 1
-                if ev["hit_both_anchors"]:
-                    st["both_anchor_hits"] += 1
-                st["exact_hits"] += ev["exact_cnt"]
-                st["reverse_hits"] += ev["rev_cnt"]
-                st["pos_pair_hits"] += ev["pos_cnt"]
-                st["any_pair_hits"] += ev["any_cnt"]
-
-                # Store earned score directly on the Win Log model entry for UI display
-                m_info["earned_pts"] = ev["earned"]
-                m_info["score_detail"] = ev
-
             pred["short_date"] = format_short_date(str(row["Date"]))
             pred["day_full"] = format_day_name(str(row["Date"]))
             pred["day"] = format_day_short(str(row["Date"]))
@@ -460,17 +434,44 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
-    # Smooth Bayesian-shrunk committee weights driven by cumulative granular points
+    # Rebuild model_stats cleanly from all graded history entries so legacy entries
+    # also receive Equal Dual-Anchor + 0.1/0.2 partial pair credits
+    rebuilt_stats = {m: default_model_stat() for m in MODEL_NAMES}
+    sorted_hist = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:150]
+
+    for item in sorted_hist:
+        actual = int(item["actual"])
+        for m_name, m_info in item.get("models", {}).items():
+            st = rebuilt_stats.setdefault(m_name, default_model_stat())
+            ev = evaluate_model_draw(m_info, actual)
+
+            st["evaluated"] += 1
+            st["total_points"] = round(st["total_points"] + ev["earned"], 2)
+            if ev["hit_any_anchor"]:
+                st["anchor_hits"] += 1
+            if ev["hit_both_anchors"]:
+                st["both_anchor_hits"] += 1
+            st["exact_hits"] += ev["exact_cnt"]
+            st["reverse_hits"] += ev["rev_cnt"]
+            st["pos_pair_hits"] += ev["pos_cnt"]
+            st["any_pair_hits"] += ev["any_cnt"]
+
+            m_info["earned_pts"] = ev["earned"]
+            m_info["score_detail"] = ev
+
+    state["model_stats"] = rebuilt_stats
+
+    # Fast 6.0-draw Bayesian-shrunk committee weights driven by cumulative granular points
     # Prior baseline ~0.55 pts/draw (34.4% dual anchor + occasional 0.1/0.2 pair partial hits)
     raw_weights = {}
     for m in MODEL_NAMES:
         st = state["model_stats"].get(m, default_model_stat())
-        avg_pts = (st["total_points"] + 15.0 * 0.55) / (st["evaluated"] + 15.0)
+        avg_pts = (st["total_points"] + 6.0 * 0.55) / (st["evaluated"] + 6.0)
         raw_weights[m] = avg_pts ** 2
 
     total_w = sum(raw_weights.values())
     state["model_weights"] = {m: round(raw_weights[m] / total_w, 4) for m in MODEL_NAMES}
-    state["history"] = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:150]
+    state["history"] = sorted_hist
     state["upcoming"] = still_upcoming
     return state
 
@@ -615,7 +616,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions & unified granular scoring updated.")
+    print("[OK] SAI 2D predictions & 6-draw adaptive granular weights updated.")
 
 
 if __name__ == "__main__":
