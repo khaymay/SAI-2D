@@ -110,19 +110,51 @@ function decodeBase64Unicode(b64) {
   return decodeURIComponent(escape(atob(b64.replace(/\n/g, ""))));
 }
 
+async function fetchLatestRepoFileText(path) {
+  const cfg = getConfig();
+  const cacheBust = `?t=${Date.now()}`;
+
+  // 1. If GitHub token is configured, read directly from GitHub API (0-second delay, bypasses CDN cache)
+  if (cfg.owner && cfg.repo && cfg.token) {
+    try {
+      const branch = cfg.branch || "main";
+      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}&_=${Date.now()}`;
+      const apiRes = await fetch(apiUrl, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${cfg.token}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        if (json && json.content) {
+          return decodeBase64Unicode(json.content);
+        }
+      }
+    } catch (e) {
+      console.warn("Direct GitHub API fetch fallback to Pages:", e);
+    }
+  }
+
+  // 2. Public fallback via GitHub Pages with strict no-store cache headers
+  const res = await fetch(`${path}${cacheBust}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
+  return res.text();
+}
+
 async function fetchRepoData() {
   const syncEl = document.getElementById("syncStatus");
   syncEl.textContent = "Syncing...";
-  const cacheBust = `?t=${Date.now()}`;
 
   try {
-    const [predRes, csvRes] = await Promise.all([
-      fetch(`data/predictions.json${cacheBust}`),
-      fetch(`data/draws.csv${cacheBust}`),
+    const [predText, csvText] = await Promise.all([
+      fetchLatestRepoFileText("data/predictions.json").catch(() => null),
+      fetchLatestRepoFileText("data/draws.csv").catch(() => null),
     ]);
 
-    if (csvRes.ok) {
-      STATE.drawsCsvRaw = await csvRes.text();
+    if (csvText) {
+      STATE.drawsCsvRaw = csvText;
       STATE.drawsRows = parseCsv(STATE.drawsCsvRaw);
       initHistorySelectors();
       populateSessionDropdown();
@@ -130,8 +162,8 @@ async function fetchRepoData() {
       renderWinningHistory();
     }
 
-    if (predRes.ok) {
-      STATE.predictions = await predRes.json();
+    if (predText) {
+      STATE.predictions = JSON.parse(predText);
       syncEl.textContent = formatYangonTimestamp(STATE.predictions);
       renderPredictionViews();
     } else {
@@ -326,6 +358,7 @@ async function githubGetFile(path) {
   const branch = cfg.branch || "main";
   const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}`;
   const res = await fetch(url, {
+    cache: "no-store",
     headers: {
       Authorization: `Bearer ${cfg.token}`,
       Accept: "application/vnd.github+json",
@@ -399,7 +432,7 @@ async function handleLogDraw(e) {
     );
 
     document.getElementById("winningInput").value = "";
-    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating (~45s). Tap ↻ shortly.`;
+    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating (~45s). Tap ↻ once Action finishes.`;
     STATE.drawsRows = rows;
     populateSessionDropdown();
     renderCurrentWeek();
@@ -442,12 +475,15 @@ function renderUpcoming() {
   }
 
   container.innerHTML = list
-    .map((item) => {
+    .map((item, idx) => {
       const p = parseDateParts(item.date);
       const shortDate = item.short_date || p.shortDate;
       const dayFull = item.day_full || p.dayFull;
       const p1 = item.primary_anchor;
       const p2 = item.secondary_anchor;
+      const modeTag = idx === 0
+        ? `<span class="chip" style="margin-left:6px;font-size:10px">Next Live Draw</span>`
+        : `<span class="muted small" style="margin-left:6px">Base Forecast</span>`;
 
       const pairsHtml = (item.top_pairs || [])
         .map(
@@ -471,7 +507,10 @@ function renderUpcoming() {
       return `
         <article class="pred-card">
           <div class="card-header" style="margin-bottom:0">
-            <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
+            <div>
+              <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
+              ${modeTag}
+            </div>
             <span class="session-pill ${item.session.toLowerCase()}">${item.session}</span>
           </div>
 
@@ -660,6 +699,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.getElementById("settingsModal").classList.add("hidden");
     document.getElementById("loggerFeedback").textContent = "GitHub connection saved locally in browser.";
+    fetchRepoData();
   });
 
   document.querySelectorAll(".tab-btn").forEach((btn) => {
