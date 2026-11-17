@@ -1,0 +1,26 @@
+name: SAI 2D Walk-Forward Backtest
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --only-binary=:all: -r requirements.txt
+
+      - name: Run 300-Draw Walk-Forward Backtest
+        run: |
+          python scripts/backtest.py
