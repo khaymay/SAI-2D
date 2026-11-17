@@ -114,7 +114,6 @@ async function fetchLatestRepoFileText(path) {
   const cfg = getConfig();
   const cacheBust = `?t=${Date.now()}`;
 
-  // 1. If GitHub token is configured, read directly from GitHub API (0-second delay, bypasses CDN cache)
   if (cfg.owner && cfg.repo && cfg.token) {
     try {
       const branch = cfg.branch || "main";
@@ -137,7 +136,6 @@ async function fetchLatestRepoFileText(path) {
     }
   }
 
-  // 2. Public fallback via GitHub Pages with strict no-store cache headers
   const res = await fetch(`${path}${cacheBust}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
   return res.text();
@@ -543,6 +541,70 @@ function renderUpcoming() {
     .join("");
 }
 
+function computeClientModelScore(m, actStr) {
+  // Uses backend-stored earned_pts if available, or computes identical rules on the fly for older logs
+  if (typeof m.earned_pts === "number") {
+    const d = m.score_detail || {};
+    return {
+      earned: m.earned_pts,
+      hitExact: (d.exact_cnt || 0) > 0,
+      hitRev: (d.rev_cnt || 0) > 0,
+      hitAnchor: Boolean(d.hit_any_anchor),
+      hitPos: (d.pos_cnt || 0) > 0,
+      hitAnyDigit: (d.any_cnt || 0) > 0,
+    };
+  }
+
+  const actNum = parseInt(actStr, 10);
+  const actT = Math.floor(actNum / 10);
+  const actU = actNum % 10;
+  const revStr = `${actU}${actT}`;
+  const actDigits = new Set([actT, actU]);
+
+  const a1 = Number(m.anchor_digit);
+  const a2 = m.backup_digit !== undefined ? Number(m.backup_digit) : -1;
+  const hitA1 = actDigits.has(a1);
+  const hitA2 = actDigits.has(a2);
+
+  let anchorPts = 0;
+  if (hitA1 && hitA2 && a1 !== a2) anchorPts = 1.5;
+  else if (hitA1 || hitA2) anchorPts = 1.0;
+
+  let pairPts = 0;
+  let hitExact = false;
+  let hitRev = false;
+  let hitPos = false;
+  let hitAnyDigit = false;
+
+  (m.top_pairs || []).slice(0, 3).forEach((pStr) => {
+    const pNum = parseInt(pStr, 10);
+    const pt = Math.floor(pNum / 10);
+    const pu = pNum % 10;
+    if (pStr === actStr) {
+      pairPts += 3.0;
+      hitExact = true;
+    } else if (pStr === revStr && actStr !== revStr) {
+      pairPts += 2.0;
+      hitRev = true;
+    } else if (pt === actT || pu === actU) {
+      pairPts += 0.2;
+      hitPos = true;
+    } else if (actDigits.has(pt) || actDigits.has(pu)) {
+      pairPts += 0.1;
+      hitAnyDigit = true;
+    }
+  });
+
+  return {
+    earned: Math.round((anchorPts + pairPts) * 100) / 100,
+    hitExact,
+    hitRev,
+    hitAnchor: hitA1 || hitA2,
+    hitPos,
+    hitAnyDigit,
+  };
+}
+
 function renderWinLog() {
   const hist = STATE.predictions?.history || [];
   const strip = document.getElementById("scoreSummaryStrip");
@@ -573,40 +635,44 @@ function renderWinLog() {
       const shortDate = h.short_date || p.shortDate;
       const dayFull = h.day_full || p.dayFull;
       const pairs = (h.top_pairs || []).map((x) => x.pair).join(", ");
-
       const actStr = String(h.actual || "").padStart(2, "0");
-      const revStr = actStr.length === 2 ? `${actStr[1]}${actStr[0]}` : "";
-      const actDigits = new Set(actStr.split("").map((d) => parseInt(d, 10)));
 
       const allModelsHtml = Object.entries(h.models || {})
         .map(([mName, m]) => {
           const mPairs = m.top_pairs || [];
-          const hitExact = mPairs.includes(actStr);
-          const hitRev = !hitExact && revStr !== actStr && mPairs.includes(revStr);
-          const hitAnchor = actDigits.has(Number(m.anchor_digit));
-          const hitBackup = actDigits.has(Number(m.backup_digit));
+          const sc = computeClientModelScore(m, actStr);
 
-          let badge = "";
+          let tagBadge = "";
           let rowCls = "";
-          if (hitExact) {
-            badge = `<span class="mini-hit gold">EXACT</span>`;
+          if (sc.hitExact) {
+            tagBadge = `<span class="mini-hit gold">EXACT</span>`;
             rowCls = "hit-row";
-          } else if (hitRev) {
-            badge = `<span class="mini-hit emerald">REV</span>`;
+          } else if (sc.hitRev) {
+            tagBadge = `<span class="mini-hit emerald">REV</span>`;
             rowCls = "hit-row";
-          } else if (hitAnchor || hitBackup) {
-            badge = `<span class="mini-hit blue">DIGIT</span>`;
+          } else if (sc.hitAnchor) {
+            tagBadge = `<span class="mini-hit blue">ANCHOR</span>`;
             rowCls = "hit-row";
+          } else if (sc.hitPos) {
+            tagBadge = `<span class="mini-hit pos">POS</span>`;
+            rowCls = "hit-row-soft";
+          } else if (sc.hitAnyDigit) {
+            tagBadge = `<span class="mini-hit digit">DIGIT</span>`;
+            rowCls = "hit-row-soft";
           }
+
+          const ptsBadge = sc.earned > 0
+            ? `<span class="pts-pill earned">+${sc.earned.toFixed(1)} pts</span>`
+            : `<span class="pts-pill zero">0.0 pts</span>`;
 
           return `
             <div class="winlog-model-item ${rowCls}">
               <div class="winlog-model-top">
                 <strong>${mName.replace("_", " ")}</strong>
-                ${badge}
+                <div class="winlog-badges">${tagBadge}${ptsBadge}</div>
               </div>
               <div class="muted small">
-                Anchor: <b>${m.anchor_digit}</b>${m.backup_digit !== undefined ? ` / ${m.backup_digit}` : ""} • Pairs: <b>${mPairs.join(", ")}</b>
+                Anchors: <b>${m.anchor_digit}</b> / <b>${m.backup_digit ?? "—"}</b> • Pairs: <b>${mPairs.join(", ")}</b>
               </div>
             </div>`;
         })
@@ -644,8 +710,14 @@ function renderModels() {
   board.innerHTML = Object.keys(weights)
     .map((mName) => {
       const w = weights[mName] ?? 0.2;
-      const st = stats[mName] || { evaluated: 0, anchor_hits: 0, exact_hits: 0, reverse_hits: 0 };
-      const rate = st.evaluated ? ((st.anchor_hits / st.evaluated) * 100).toFixed(1) + "%" : "—";
+      const st = stats[mName] || {
+        evaluated: 0, total_points: 0, anchor_hits: 0, exact_hits: 0, reverse_hits: 0, pos_pair_hits: 0
+      };
+      const evalCnt = st.evaluated || 0;
+      const totPts = Number(st.total_points || 0);
+      const avgPts = evalCnt ? (totPts / evalCnt).toFixed(2) : "—";
+      const rate = evalCnt ? ((st.anchor_hits / evalCnt) * 100).toFixed(1) + "%" : "—";
+
       return `
         <div class="model-stat-card">
           <div style="display:flex;justify-content:space-between;align-items:center">
@@ -653,8 +725,9 @@ function renderModels() {
             <span class="chip">${(w * 100).toFixed(1)}% wt</span>
           </div>
           <div class="muted small" style="margin-top:7px">
-            Anchor Hit Rate: <b>${rate}</b> (${st.anchor_hits}/${st.evaluated})<br/>
-            Exact: <b>${st.exact_hits}</b> • Reverse (R): <b>${st.reverse_hits}</b>
+            Score: <b>${totPts.toFixed(1)} pts</b> (Avg: <b>${avgPts}</b>/draw)<br/>
+            Dual-Anchor Hit: <b>${rate}</b> (${st.anchor_hits}/${evalCnt})<br/>
+            Exact: <b>${st.exact_hits}</b> • Rev: <b>${st.reverse_hits}</b> • Pos Pair: <b>${st.pos_pair_hits || 0}</b>
           </div>
         </div>`;
     })
