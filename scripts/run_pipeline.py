@@ -32,19 +32,40 @@ def format_day_short(date_str: str) -> str:
     return pd.to_datetime(date_str).strftime("%a")
 
 
+def default_model_stat() -> dict:
+    return {
+        "evaluated": 0,
+        "total_points": 0.0,
+        "anchor_hits": 0,
+        "both_anchor_hits": 0,
+        "exact_hits": 0,
+        "reverse_hits": 0,
+        "pos_pair_hits": 0,
+        "any_pair_hits": 0,
+    }
+
+
 def load_existing_predictions() -> dict:
     if os.path.exists(PRED_PATH):
         with open(PRED_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            for m in MODEL_NAMES:
+                st = data.setdefault("model_stats", {}).setdefault(m, default_model_stat())
+                for k, v in default_model_stat().items():
+                    st.setdefault(k, v)
+                # Backfill total_points if migrating from legacy counts
+                if st["total_points"] == 0.0 and st["evaluated"] > 0:
+                    st["total_points"] = round(
+                        3.0 * st["exact_hits"] + 2.0 * st["reverse_hits"] + 1.0 * st["anchor_hits"],
+                        2,
+                    )
+            return data
     return {
         "app_name": "SAI 2D",
         "updated_at": None,
         "updated_at_iso": None,
         "model_weights": {m: 0.20 for m in MODEL_NAMES},
-        "model_stats": {
-            m: {"evaluated": 0, "anchor_hits": 0, "exact_hits": 0, "reverse_hits": 0}
-            for m in MODEL_NAMES
-        },
+        "model_stats": {m: default_model_stat() for m in MODEL_NAMES},
         "drought_radar": {},
         "upcoming": [],
         "history": [],
@@ -219,8 +240,8 @@ def predict_bayesian_pure_transition(
 
     if not is_immediate_next:
         weights = 0.985 ** np.arange(len(nums) - 1, -1, -1)
-        p_t = (np.bincount(tens, weights=weights, minlength=10) + 1.5)
-        p_u = (np.bincount(units, weights=weights, minlength=10) + 1.5)
+        p_t = np.bincount(tens, weights=weights, minlength=10) + 1.5
+        p_u = np.bincount(units, weights=weights, minlength=10) + 1.5
         p_t /= p_t.sum()
         p_u /= p_u.sum()
         p_mom = np.outer(p_t, p_u).flatten()
@@ -232,7 +253,7 @@ def predict_bayesian_pure_transition(
     last_t, last_u = last_num // 10, last_num % 10
     t_mat = np.ones((10, 10)) * 2.0
     u_mat = np.ones((10, 10)) * 2.0
-    trans_mask = (is_pm_hist[1:] == t_pm)
+    trans_mask = is_pm_hist[1:] == t_pm
     np.add.at(t_mat, (tens[:-1][trans_mask], tens[1:][trans_mask]), 1.0)
     np.add.at(u_mat, (units[:-1][trans_mask], units[1:][trans_mask]), 1.0)
     t_mat /= t_mat.sum(axis=1, keepdims=True)
@@ -312,8 +333,71 @@ def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
     return p_t + p_u - (p_t * p_u)
 
 
+def evaluate_model_draw(m_info: dict, actual: int) -> dict:
+    """
+    Unified Scoring:
+    - Equal Dual-Anchor: 1.0 pt if either Primary or Backup anchor hits; 1.5 pts if both hit.
+    - Cumulative Per-Pair Partial Credit (across all 3 pairs in top_pairs):
+        * 3.0 pts: Exact pair match
+        * 2.0 pts: Reverse pair match (non-double)
+        * 0.2 pts: Positional digit hit (Tens == Actual_Tens OR Units == Actual_Units)
+        * 0.1 pts: Any-position digit hit (digit appears in Actual, wrong slot)
+    """
+    act_t, act_u = actual // 10, actual % 10
+    act_str = f"{actual:02d}"
+    rev_str = f"{act_u}{act_t}"
+    act_digits = {act_t, act_u}
+
+    a1 = int(m_info["anchor_digit"])
+    a2 = int(m_info.get("backup_digit", -1))
+    hit_a1 = a1 in act_digits
+    hit_a2 = a2 in act_digits
+
+    if hit_a1 and hit_a2 and a1 != a2:
+        anchor_pts = 1.5
+    elif hit_a1 or hit_a2:
+        anchor_pts = 1.0
+    else:
+        anchor_pts = 0.0
+
+    pair_pts = 0.0
+    exact_cnt = 0
+    rev_cnt = 0
+    pos_cnt = 0
+    any_cnt = 0
+
+    for pair_str in m_info.get("top_pairs", [])[:3]:
+        p_val = int(pair_str)
+        pt, pu = p_val // 10, p_val % 10
+        if pair_str == act_str:
+            pair_pts += 3.0
+            exact_cnt += 1
+        elif pair_str == rev_str and act_str != rev_str:
+            pair_pts += 2.0
+            rev_cnt += 1
+        elif pt == act_t or pu == act_u:
+            pair_pts += 0.2
+            pos_cnt += 1
+        elif pt in act_digits or pu in act_digits:
+            pair_pts += 0.1
+            any_cnt += 1
+
+    earned = round(anchor_pts + pair_pts, 2)
+    return {
+        "earned": earned,
+        "anchor_pts": round(anchor_pts, 2),
+        "pair_pts": round(pair_pts, 2),
+        "hit_any_anchor": bool(hit_a1 or hit_a2),
+        "hit_both_anchors": bool(hit_a1 and hit_a2 and a1 != a2),
+        "exact_cnt": exact_cnt,
+        "rev_cnt": rev_cnt,
+        "pos_cnt": pos_cnt,
+        "any_cnt": any_cnt,
+    }
+
+
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
-    """Grades completed draws and updates multi-tier composite weights (3=Exact, 2=Reverse, 1=Anchor)."""
+    """Grades completed draws using Equal Dual-Anchor + Cumulative Per-Pair Granular Scoring."""
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
         int(r["Session_ID"]): r
@@ -347,20 +431,23 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
                 outcome = "MISS"
 
             for m_name, m_info in pred.get("models", {}).items():
-                if m_name not in state["model_stats"]:
-                    state["model_stats"][m_name] = {
-                        "evaluated": 0, "anchor_hits": 0, "exact_hits": 0, "reverse_hits": 0
-                    }
-                st = state["model_stats"][m_name]
+                st = state["model_stats"].setdefault(m_name, default_model_stat())
+                ev = evaluate_model_draw(m_info, actual)
+
                 st["evaluated"] += 1
-                m_anchor = int(m_info["anchor_digit"])
-                m_pairs = m_info.get("top_pairs", [])
-                if m_anchor in act_digits:
+                st["total_points"] = round(st["total_points"] + ev["earned"], 2)
+                if ev["hit_any_anchor"]:
                     st["anchor_hits"] += 1
-                if act_str in m_pairs[:3]:
-                    st["exact_hits"] += 1
-                elif rev_str in m_pairs[:3] and act_str != rev_str:
-                    st["reverse_hits"] += 1
+                if ev["hit_both_anchors"]:
+                    st["both_anchor_hits"] += 1
+                st["exact_hits"] += ev["exact_cnt"]
+                st["reverse_hits"] += ev["rev_cnt"]
+                st["pos_pair_hits"] += ev["pos_cnt"]
+                st["any_pair_hits"] += ev["any_cnt"]
+
+                # Store earned score directly on the Win Log model entry for UI display
+                m_info["earned_pts"] = ev["earned"]
+                m_info["score_detail"] = ev
 
             pred["short_date"] = format_short_date(str(row["Date"]))
             pred["day_full"] = format_day_name(str(row["Date"]))
@@ -373,18 +460,13 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
+    # Smooth Bayesian-shrunk committee weights driven by cumulative granular points
+    # Prior baseline ~0.55 pts/draw (34.4% dual anchor + occasional 0.1/0.2 pair partial hits)
     raw_weights = {}
     for m in MODEL_NAMES:
-        st = state["model_stats"].get(
-            m, {"evaluated": 0, "anchor_hits": 0, "exact_hits": 0, "reverse_hits": 0}
-        )
-        composite_pts = (
-            3.0 * st.get("exact_hits", 0)
-            + 2.0 * st.get("reverse_hits", 0)
-            + 1.0 * st.get("anchor_hits", 0)
-        )
-        smoothed_pts = (composite_pts + 20.0 * 0.25) / (st.get("evaluated", 0) + 20.0)
-        raw_weights[m] = smoothed_pts ** 2
+        st = state["model_stats"].get(m, default_model_stat())
+        avg_pts = (st["total_points"] + 15.0 * 0.55) / (st["evaluated"] + 15.0)
+        raw_weights[m] = avg_pts ** 2
 
     total_w = sum(raw_weights.values())
     state["model_weights"] = {m: round(raw_weights[m] / total_w, 4) for m in MODEL_NAMES}
@@ -407,7 +489,6 @@ def main():
     ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
     feature_cols = [c for c in feat_df.columns if c not in ignore_cols]
 
-    # Train exclusively on the most recent 600 completed draws (validated winner C2)
     completed_feats = feat_df[(feat_df["Session_ID"] >= 15) & (feat_df["Winning_Number"].notna())]
     train_df = completed_feats.tail(ROLLING_WINDOW)
     X_train = train_df[feature_cols]
@@ -427,20 +508,18 @@ def main():
     lag_cols = [c for c in feature_cols if c.startswith("lag_")]
     neutral_lag_means = X_train[lag_cols].mean()
 
-    # Confirmed feature state right after the latest real draw
     first_open_mask = feat_df["Session_ID"] == open_sids[0]
     confirmed_state_row = feat_df.loc[first_open_mask, feature_cols].iloc[0].copy()
 
     new_upcoming = []
     for step_idx, sid in enumerate(open_sids):
-        is_immediate = (step_idx == 0)
+        is_immediate = step_idx == 0
         row_mask = feat_df["Session_ID"] == sid
         target_row = df.loc[row_mask].iloc[0]
 
         if is_immediate:
             X_next = feat_df.loc[row_mask, feature_cols].fillna(X_train.mean())
         else:
-            # For Slots 2-8, use known calendar + current confirmed momentum with neutral lag means
             X_next = feat_df.loc[row_mask, feature_cols].copy()
             for col in feature_cols:
                 if col not in {"Year", "Day_of_Year", "Is_PM", "DayOfWeek", "sin_doy", "cos_doy"}:
@@ -536,7 +615,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D Rolling-600 3-Head Pure-Transition predictions updated.")
+    print("[OK] SAI 2D predictions & unified granular scoring updated.")
 
 
 if __name__ == "__main__":
