@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -12,6 +12,7 @@ from catboost import CatBoostClassifier
 DRAWS_PATH = "data/draws.csv"
 PRED_PATH = "data/predictions.json"
 MODEL_NAMES = ["TabPFN_3.5", "LightGBM", "CatBoost", "L2_Logistic", "Bayesian_Markov"]
+YANGON_TZ = timezone(timedelta(hours=6, minutes=30))
 
 
 def format_short_date(date_str: str) -> str:
@@ -34,6 +35,7 @@ def load_existing_predictions() -> dict:
     return {
         "app_name": "SAI 2D",
         "updated_at": None,
+        "updated_at_iso": None,
         "model_weights": {m: 0.20 for m in MODEL_NAMES},
         "model_stats": {
             m: {"evaluated": 0, "anchor_hits": 0, "exact_hits": 0, "reverse_hits": 0}
@@ -81,6 +83,7 @@ def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFra
 
 
 def build_features(data: pd.DataFrame) -> pd.DataFrame:
+    """Momentum-first, leak-free feature builder (short/medium streaks, lag carryover, DOW x Session rates)."""
     d = data.copy()
     d["Date_dt"] = pd.to_datetime(d["Date"])
     d["DayOfWeek"] = d["Date_dt"].dt.dayofweek
@@ -99,12 +102,11 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
         d[f"lag_{lag}_units"] = s % 10
         d[f"lag_{lag}_brake"] = (d[f"lag_{lag}_tens"] + d[f"lag_{lag}_units"]) % 10
 
-    tens_gap, units_gap = np.zeros((n, 10)), np.zeros((n, 10))
+    tens_roll15, units_roll15 = np.zeros((n, 10)), np.zeros((n, 10))
     tens_roll50, units_roll50 = np.zeros((n, 10)), np.zeros((n, 10))
-    cur_t_gap, cur_u_gap = np.zeros(10), np.zeros(10)
+    recent_carry = np.zeros((n, 10))
     hist_t, hist_u = [], []
 
-    # Expanding leak-free Day-of-Week x AM/PM positional & any-position digit rates
     dow_t_rate = np.zeros((n, 10))
     dow_u_rate = np.zeros((n, 10))
     dow_any_rate = np.zeros((n, 10))
@@ -117,13 +119,16 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
     PRIOR_N = 20.0
 
     for i in range(n):
-        tens_gap[i] = cur_t_gap
-        units_gap[i] = cur_u_gap
         if hist_t:
-            rt, ru = hist_t[-50:], hist_u[-50:]
+            rt15, ru15 = hist_t[-15:], hist_u[-15:]
+            rt50, ru50 = hist_t[-50:], hist_u[-50:]
+            last_digits = set(hist_t[-2:] + hist_u[-2:])
             for k in range(10):
-                tens_roll50[i, k] = rt.count(k) / len(rt)
-                units_roll50[i, k] = ru.count(k) / len(ru)
+                tens_roll15[i, k] = rt15.count(k) / len(rt15)
+                units_roll15[i, k] = ru15.count(k) / len(ru15)
+                tens_roll50[i, k] = rt50.count(k) / len(rt50)
+                units_roll50[i, k] = ru50.count(k) / len(ru50)
+                recent_carry[i, k] = 1.0 if k in last_digits else 0.0
 
         w = int(dows[i])
         pm = int(pms[i])
@@ -135,10 +140,6 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
         if not np.isnan(nums[i]):
             val = int(nums[i])
             t_val, u_val = val // 10, val % 10
-            cur_t_gap += 1
-            cur_u_gap += 1
-            cur_t_gap[t_val] = 0
-            cur_u_gap[u_val] = 0
             hist_t.append(t_val)
             hist_u.append(u_val)
 
@@ -150,10 +151,11 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
             cnt_slot[w, pm] += 1.0
 
     for k in range(10):
-        d[f"tens_gap_{k}"] = tens_gap[:, k]
-        d[f"units_gap_{k}"] = units_gap[:, k]
+        d[f"tens_roll15_{k}"] = tens_roll15[:, k]
+        d[f"units_roll15_{k}"] = units_roll15[:, k]
         d[f"tens_roll50_{k}"] = tens_roll50[:, k]
         d[f"units_roll50_{k}"] = units_roll50[:, k]
+        d[f"recent_carry_{k}"] = recent_carry[:, k]
         d[f"dow_pm_tens_rate_{k}"] = dow_t_rate[:, k]
         d[f"dow_pm_units_rate_{k}"] = dow_u_rate[:, k]
         d[f"dow_pm_any_rate_{k}"] = dow_any_rate[:, k]
@@ -162,6 +164,7 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_drought_radar(hist: pd.DataFrame) -> dict:
+    """Visual UI radar only (decoupled from model drought chasing)."""
     last_sid = int(hist["Session_ID"].max())
     tens_s = hist["Winning_Number"].astype(int) // 10
     units_s = hist["Winning_Number"].astype(int) % 10
@@ -188,16 +191,18 @@ def compute_drought_radar(hist: pd.DataFrame) -> dict:
 
 
 def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
+    """Momentum-balanced Dirichlet-Markov + Day-of-Week x Session model (no artificial cold-digit boosts)."""
     n_hist = len(hist)
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
     units = nums % 10
     brakes = (tens + units) % 10
 
-    weights = 0.994 ** np.arange(n_hist - 1, -1, -1)
-    p_t = np.ones(10) * 2.0
-    p_u = np.ones(10) * 2.0
-    p_b = np.ones(10) * 2.0
+    # Stronger recency decay (gamma = 0.985) so recent active digits lead over stale droughts
+    weights = 0.985 ** np.arange(n_hist - 1, -1, -1)
+    p_t = np.ones(10) * 1.5
+    p_u = np.ones(10) * 1.5
+    p_b = np.ones(10) * 1.5
     for idx in range(n_hist):
         p_t[tens[idx]] += weights[idx]
         p_u[units[idx]] += weights[idx]
@@ -227,21 +232,12 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     u_mat /= u_mat.sum(axis=1, keepdims=True)
     p_markov = np.outer(t_mat[last_t], u_mat[last_u]).flatten()
 
-    last_sid = int(hist["Session_ID"].max())
-    gap_t = np.array([last_sid - hist.loc[tens == k, "Session_ID"].max() for k in range(10)])
-    gap_u = np.array([last_sid - hist.loc[units == k, "Session_ID"].max() for k in range(10)])
-    gap_b = np.array([last_sid - hist.loc[brakes == k, "Session_ID"].max() for k in range(10)])
-
-    w_t = 1.0 + 0.35 * np.clip((gap_t - 8) / 20.0, 0, 1.5)
-    w_u = 1.0 + 0.35 * np.clip((gap_u - 8) / 20.0, 0, 1.5)
-    w_b = 1.0 + 0.25 * np.clip((gap_b - 8) / 20.0, 0, 1.5)
-
     grid = np.zeros(100)
     for num in range(100):
         t, u = num // 10, num % 10
         b = (t + u) % 10
-        pos_score = (p_t[t] * w_t[t]) * (p_u[u] * w_u[u]) * (p_b[b] * w_b[b] * 10.0)
-        grid[num] = 0.35 * pos_score + 0.30 * p_markov[num] + 0.35 * p_exact_dow[num]
+        pos_score = p_t[t] * p_u[u] * (p_b[b] * 10.0)
+        grid[num] = 0.40 * pos_score + 0.35 * p_exact_dow[num] + 0.25 * p_markov[num]
 
     grid = np.maximum(grid, 1e-6)
     return grid / grid.sum()
@@ -309,7 +305,6 @@ def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
 
 
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
-    """Automatically archives & grades the last pre-draw forecast once a winning number is logged."""
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
         int(r["Session_ID"]): r
@@ -495,13 +490,15 @@ def main():
             "models": model_breakdown,
         })
 
+    now_mmt = datetime.now(YANGON_TZ)
     state["upcoming"] = new_upcoming
-    state["updated_at"] = datetime.now(timezone.utc).strftime("%d %b • %H:%M UTC")
+    state["updated_at_iso"] = now_mmt.isoformat()
+    state["updated_at"] = f"{now_mmt.day} {now_mmt.strftime('%b')} • {now_mmt.strftime('%I:%M %p').lstrip('0')} MMT"
     state.pop("latest_session_id", None)
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print(f"[OK] SAI 2D predictions updated with Day-of-Week x AM/PM digit rates.")
+    print("[OK] SAI 2D momentum-first predictions updated in Yangon Time (MMT).")
 
 
 if __name__ == "__main__":
