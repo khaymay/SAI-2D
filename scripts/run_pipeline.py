@@ -14,6 +14,9 @@ PRED_PATH = "data/predictions.json"
 MODEL_NAMES = ["TabPFN_3.5", "LightGBM", "CatBoost", "L2_Logistic", "Bayesian_Markov"]
 YANGON_TZ = timezone(timedelta(hours=6, minutes=30))
 
+# Precomputed (10, 10) lookup matrix of Brake = (t + u) % 10
+BRAKE_IDX = (np.arange(10)[:, None] + np.arange(10)[None, :]) % 10
+
 
 def format_short_date(date_str: str) -> str:
     dt = pd.to_datetime(date_str)
@@ -83,7 +86,7 @@ def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFra
 
 
 def build_features(data: pd.DataFrame) -> pd.DataFrame:
-    """Momentum-first, leak-free feature builder (short/medium streaks, lag carryover, DOW x Session rates)."""
+    """Lean, leak-free momentum + Day-of-Week x AM/PM positional rate features."""
     d = data.copy()
     d["Date_dt"] = pd.to_datetime(d["Date"])
     d["DayOfWeek"] = d["Date_dt"].dt.dayofweek
@@ -164,7 +167,7 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_drought_radar(hist: pd.DataFrame) -> dict:
-    """Visual UI radar only (decoupled from model drought chasing)."""
+    """Visual UI radar only (decoupled from model predictions)."""
     last_sid = int(hist["Session_ID"].max())
     tens_s = hist["Winning_Number"].astype(int) // 10
     units_s = hist["Winning_Number"].astype(int) % 10
@@ -190,23 +193,25 @@ def compute_drought_radar(hist: pd.DataFrame) -> dict:
     }
 
 
+def combine_t_u_brake(pt: np.ndarray, pu: np.ndarray, pb: np.ndarray) -> np.ndarray:
+    """Combines Tens, Units, and Modulo-10 Brake heads into a normalized 100-pair distribution."""
+    grid = (np.outer(pt, pu) * (pb[BRAKE_IDX] * 10.0)).flatten()
+    grid = np.maximum(grid, 1e-8)
+    return grid / grid.sum()
+
+
 def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
-    """Momentum-balanced Dirichlet-Markov + Day-of-Week x Session model (no artificial cold-digit boosts)."""
+    """Momentum-balanced Dirichlet-Markov + Day-of-Week x Session model."""
     n_hist = len(hist)
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
     units = nums % 10
     brakes = (tens + units) % 10
 
-    # Stronger recency decay (gamma = 0.985) so recent active digits lead over stale droughts
     weights = 0.985 ** np.arange(n_hist - 1, -1, -1)
-    p_t = np.ones(10) * 1.5
-    p_u = np.ones(10) * 1.5
-    p_b = np.ones(10) * 1.5
-    for idx in range(n_hist):
-        p_t[tens[idx]] += weights[idx]
-        p_u[units[idx]] += weights[idx]
-        p_b[brakes[idx]] += weights[idx]
+    p_t = np.bincount(tens, weights=weights, minlength=10) + 1.5
+    p_u = np.bincount(units, weights=weights, minlength=10) + 1.5
+    p_b = np.bincount(brakes, weights=weights, minlength=10) + 1.5
     p_t /= p_t.sum()
     p_u /= p_u.sum()
     p_b /= p_b.sum()
@@ -225,60 +230,52 @@ def predict_bayesian_markov(hist: pd.DataFrame, target_row: pd.Series) -> np.nda
     last_t, last_u = last_num // 10, last_num % 10
     t_mat = np.ones((10, 10)) * 2.0
     u_mat = np.ones((10, 10)) * 2.0
-    for i in range(n_hist - 1):
-        t_mat[tens[i], tens[i + 1]] += 1.0
-        u_mat[units[i], units[i + 1]] += 1.0
+    np.add.at(t_mat, (tens[:-1], tens[1:]), 1.0)
+    np.add.at(u_mat, (units[:-1], units[1:]), 1.0)
     t_mat /= t_mat.sum(axis=1, keepdims=True)
     u_mat /= u_mat.sum(axis=1, keepdims=True)
     p_markov = np.outer(t_mat[last_t], u_mat[last_u]).flatten()
 
-    grid = np.zeros(100)
-    for num in range(100):
-        t, u = num // 10, num % 10
-        b = (t + u) % 10
-        pos_score = p_t[t] * p_u[u] * (p_b[b] * 10.0)
-        grid[num] = 0.40 * pos_score + 0.35 * p_exact_dow[num] + 0.25 * p_markov[num]
-
+    pos_score = (np.outer(p_t, p_u) * (p_b[BRAKE_IDX] * 10.0)).flatten()
+    grid = 0.40 * pos_score + 0.35 * p_exact_dow + 0.25 * p_markov
     grid = np.maximum(grid, 1e-6)
     return grid / grid.sum()
 
 
 def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
+    """Fits 3 heads (Tens, Units, Modulo-10 Brake) per ML model family."""
     y_t = y_num // 10
     y_u = y_num % 10
+    y_b = (y_t + y_u) % 10
     models = {}
 
-    lgb_t = lgb.LGBMClassifier(
-        objective="multiclass", num_class=10, n_estimators=120,
-        learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
-        min_child_samples=25, random_state=42, verbose=-1
-    )
-    lgb_u = lgb.LGBMClassifier(
-        objective="multiclass", num_class=10, n_estimators=120,
-        learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
-        min_child_samples=25, random_state=42, verbose=-1
-    )
-    lgb_t.fit(X_train, y_t)
-    lgb_u.fit(X_train, y_u)
-    models["LightGBM"] = (lgb_t, lgb_u)
+    lgb_heads = []
+    for target in (y_t, y_u, y_b):
+        clf = lgb.LGBMClassifier(
+            objective="multiclass", num_class=10, n_estimators=120,
+            learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
+            min_child_samples=25, n_jobs=-1, random_state=42, verbose=-1
+        )
+        clf.fit(X_train, target)
+        lgb_heads.append(clf)
+    models["LightGBM"] = tuple(lgb_heads)
 
-    cb_t = CatBoostClassifier(
-        iterations=250, learning_rate=0.04, depth=4,
-        loss_function="MultiClass", random_seed=42, verbose=0
-    )
-    cb_u = CatBoostClassifier(
-        iterations=250, learning_rate=0.04, depth=4,
-        loss_function="MultiClass", random_seed=42, verbose=0
-    )
-    cb_t.fit(X_train, y_t)
-    cb_u.fit(X_train, y_u)
-    models["CatBoost"] = (cb_t, cb_u)
+    cb_heads = []
+    for target in (y_t, y_u, y_b):
+        clf = CatBoostClassifier(
+            iterations=200, learning_rate=0.04, depth=4,
+            loss_function="MultiClass", thread_count=-1, random_seed=42, verbose=0
+        )
+        clf.fit(X_train, target)
+        cb_heads.append(clf)
+    models["CatBoost"] = tuple(cb_heads)
 
-    lr_t = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
-    lr_u = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
-    lr_t.fit(X_train, y_t)
-    lr_u.fit(X_train, y_u)
-    models["L2_Logistic"] = (lr_t, lr_u)
+    lr_heads = []
+    for target in (y_t, y_u, y_b):
+        clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.04, max_iter=1000))
+        clf.fit(X_train, target)
+        lr_heads.append(clf)
+    models["L2_Logistic"] = tuple(lr_heads)
 
     token = os.environ.get("TABPFN_TOKEN", "").strip()
     if token:
@@ -286,11 +283,12 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
             from tabpfn_client import TabPFNClassifier, set_access_token
             from tabpfn_client.api_models import ModelVersion
             set_access_token(token)
-            tp_t = TabPFNClassifier.create_default_for_version(ModelVersion.V3_5)
-            tp_u = TabPFNClassifier.create_default_for_version(ModelVersion.V3_5)
-            tp_t.fit(X_train, y_t)
-            tp_u.fit(X_train, y_u)
-            models["TabPFN_3.5"] = (tp_t, tp_u)
+            tp_heads = []
+            for target in (y_t, y_u, y_b):
+                clf = TabPFNClassifier.create_default_for_version(ModelVersion.V3_5)
+                clf.fit(X_train, target)
+                tp_heads.append(clf)
+            models["TabPFN_3.5"] = tuple(tp_heads)
         except Exception as exc:
             print(f"[WARN] TabPFN-3.5 skipped due to API error: {exc}")
 
@@ -305,6 +303,7 @@ def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
 
 
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
+    """Grades completed draws and updates multi-tier composite weights (3=Exact, 2=Reverse, 1=Anchor)."""
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
         int(r["Session_ID"]): r
@@ -364,11 +363,20 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
+    # Multi-tier composite auto-weighting (3 pts Exact, 2 pts Reverse, 1 pt Anchor Digit)
     raw_weights = {}
     for m in MODEL_NAMES:
-        st = state["model_stats"].get(m, {"evaluated": 0, "anchor_hits": 0})
-        smoothed_rate = (st["anchor_hits"] + 20 * 0.19) / (st["evaluated"] + 20.0)
-        raw_weights[m] = smoothed_rate ** 2
+        st = state["model_stats"].get(
+            m, {"evaluated": 0, "anchor_hits": 0, "exact_hits": 0, "reverse_hits": 0}
+        )
+        composite_pts = (
+            3.0 * st.get("exact_hits", 0)
+            + 2.0 * st.get("reverse_hits", 0)
+            + 1.0 * st.get("anchor_hits", 0)
+        )
+        smoothed_pts = (composite_pts + 20.0 * 0.25) / (st.get("evaluated", 0) + 20.0)
+        raw_weights[m] = smoothed_pts ** 2
+
     total_w = sum(raw_weights.values())
     state["model_weights"] = {m: round(raw_weights[m] / total_w, 4) for m in MODEL_NAMES}
     state["history"] = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:150]
@@ -416,10 +424,11 @@ def main():
         sim_hist = sim_df[sim_df["Winning_Number"].notna()].copy()
         model_grids = {"Bayesian_Markov": predict_bayesian_markov(sim_hist, target_row)}
 
-        for m_name, (clf_t, clf_u) in ml_models.items():
+        for m_name, (clf_t, clf_u, clf_b) in ml_models.items():
             pt = clf_t.predict_proba(X_next)[0]
             pu = clf_u.predict_proba(X_next)[0]
-            model_grids[m_name] = np.outer(pt, pu).flatten()
+            pb = clf_b.predict_proba(X_next)[0]
+            model_grids[m_name] = combine_t_u_brake(pt, pu, pb)
 
         p_consensus = np.zeros(100)
         for m_name, grid in model_grids.items():
@@ -498,7 +507,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D momentum-first predictions updated in Yangon Time (MMT).")
+    print("[OK] SAI 2D predictions updated with 3-head Brake model & multi-tier weights.")
 
 
 if __name__ == "__main__":
