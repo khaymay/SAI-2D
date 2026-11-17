@@ -213,13 +213,11 @@ def predict_bayesian_pure_transition(
     t_dow = pd.to_datetime(target_row["Date"]).dayofweek
     t_pm = int(target_row["Is_PM"])
 
-    # 1. Smoothed Day-of-Week x Session empirical distribution (+0.60 prior for calibrated log-loss)
     mask = (dow_hist == t_dow) & (is_pm_hist == t_pm)
     sub_nums = nums[mask]
     p_exact_dow = (np.bincount(sub_nums, minlength=100) + 0.60) / (len(sub_nums) + 60.0)
 
     if not is_immediate_next:
-        # Future horizon slots (Slots 2-8) use pure calendar-slot + recent momentum without fabricated lags
         weights = 0.985 ** np.arange(len(nums) - 1, -1, -1)
         p_t = (np.bincount(tens, weights=weights, minlength=10) + 1.5)
         p_u = (np.bincount(units, weights=weights, minlength=10) + 1.5)
@@ -230,7 +228,6 @@ def predict_bayesian_pure_transition(
         grid = np.maximum(grid, 1e-6)
         return grid / grid.sum()
 
-    # 2. Separate Intraday (AM->PM) vs Overnight (PM->AM) 1st-order transition matrices
     last_num = int(nums[-1])
     last_t, last_u = last_num // 10, last_num % 10
     t_mat = np.ones((10, 10)) * 2.0
@@ -242,7 +239,6 @@ def predict_bayesian_pure_transition(
     u_mat /= u_mat.sum(axis=1, keepdims=True)
     p_markov = np.outer(t_mat[last_t], u_mat[last_u]).flatten()
 
-    # 3. Same-day AM digit carryover boost when predicting PM
     p_intraday = np.ones(100)
     if t_pm == 1:
         am_digits = {last_t, last_u}
@@ -429,6 +425,7 @@ def main():
     open_sids = df.loc[df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:8]
     recent_hist_600 = hist.tail(ROLLING_WINDOW).copy()
     lag_cols = [c for c in feature_cols if c.startswith("lag_")]
+    neutral_lag_means = X_train[lag_cols].mean()
 
     # Confirmed feature state right after the latest real draw
     first_open_mask = feat_df["Session_ID"] == open_sids[0]
@@ -441,15 +438,15 @@ def main():
         target_row = df.loc[row_mask].iloc[0]
 
         if is_immediate:
-            X_next = feat_df.loc[row_mask, feature_cols]
+            X_next = feat_df.loc[row_mask, feature_cols].fillna(X_train.mean())
         else:
-            # For Slots 2-8, use known calendar + current confirmed momentum without hallucinating winners
+            # For Slots 2-8, use known calendar + current confirmed momentum with neutral lag means
             X_next = feat_df.loc[row_mask, feature_cols].copy()
             for col in feature_cols:
                 if col not in {"Year", "Day_of_Year", "Is_PM", "DayOfWeek", "sin_doy", "cos_doy"}:
                     X_next[col] = confirmed_state_row[col]
             for lcol in lag_cols:
-                X_next[lcol] = np.nan
+                X_next[lcol] = neutral_lag_means[lcol]
 
         model_grids = {
             "Bayesian_Markov": predict_bayesian_pure_transition(
