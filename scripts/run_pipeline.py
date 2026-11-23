@@ -444,13 +444,22 @@ def apply_weight_guardrails(raw_weights: dict[str, float], floor: float = 0.12, 
 
 
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
+    """
+    Grades newly completed draws, removes any history entries that were undone
+    in draws.csv (Winning_Number cleared back to NaN), and rebuilds model weights.
+    """
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
         int(r["Session_ID"]): r
         for _, r in completed_rows.iterrows()
     }
 
-    existing_hist = {int(item["session_id"]): item for item in state.get("history", [])}
+    # Prune any history entry whose Session_ID is no longer completed in draws.csv (Undo Last support)
+    existing_hist = {
+        int(item["session_id"]): item
+        for item in state.get("history", [])
+        if int(item["session_id"]) in completed_map
+    }
     upcoming_list = state.get("upcoming", [])
     still_upcoming = []
 
@@ -491,7 +500,10 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
     sorted_hist = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:250]
 
     for item in sorted_hist:
-        actual = int(item["actual"])
+        row = completed_map[int(item["session_id"])]
+        actual = int(row["Winning_Number"])
+        item["actual"] = f"{actual:02d}"
+
         for m_name, m_info in item.get("models", {}).items():
             st = rebuilt_stats.setdefault(m_name, default_model_stat())
             ev = evaluate_model_draw(m_info, actual)
@@ -583,7 +595,6 @@ def main():
                 if m_name == "TabPFN_3.5":
                     tabpfn_quota_exhausted = True
 
-        # Re-normalize active weights dynamically based on models available for this step
         step_weights = {m: state["model_weights"].get(m, 0.20) for m in model_grids}
         w_sum = sum(step_weights.values())
         step_weights = {m: w / w_sum for m, w in step_weights.items()}
@@ -668,7 +679,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions updated (with graceful TabPFN quota fallback).")
+    print("[OK] SAI 2D predictions & Win Log rollback synced.")
 
 
 if __name__ == "__main__":
