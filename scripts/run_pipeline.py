@@ -443,10 +443,41 @@ def apply_weight_guardrails(raw_weights: dict[str, float], floor: float = 0.12, 
     return {m: round(w[m] / final_s, 4) for m in raw_weights}
 
 
+def grade_consensus_item(item: dict, row: pd.Series) -> dict:
+    """Computes consensus outcome, actual string, and anchor hit flags from the true draws.csv row."""
+    actual = int(row["Winning_Number"])
+    act_str = f"{actual:02d}"
+    rev_str = f"{actual % 10}{actual // 10}"
+    act_digits = {actual // 10, actual % 10}
+
+    top_pairs = [p["pair"] for p in item.get("top_pairs", [])]
+    anchor1 = int(item["primary_anchor"]["digit"])
+    anchor2 = int(item["secondary_anchor"]["digit"])
+
+    if act_str in top_pairs[:6]:
+        outcome = "EXACT"
+    elif rev_str in top_pairs[:6] and act_str != rev_str:
+        outcome = "REVERSE"
+    elif anchor1 in act_digits or anchor2 in act_digits:
+        outcome = "ANCHOR_HIT"
+    else:
+        outcome = "MISS"
+
+    item["short_date"] = format_short_date(str(row["Date"]))
+    item["day_full"] = format_day_name(str(row["Date"]))
+    item["day"] = format_day_short(str(row["Date"]))
+    item["actual"] = act_str
+    item["outcome"] = outcome
+    item["hit_primary_anchor"] = bool(anchor1 in act_digits)
+    item["hit_secondary_anchor"] = bool(anchor2 in act_digits)
+    return item
+
+
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
     """
-    Grades newly completed draws, removes any history entries that were undone
-    in draws.csv (Winning_Number cleared back to NaN), and rebuilds model weights.
+    Grades newly completed draws, removes undone entries, AND re-grades every
+    existing history entry's outcome & model points against draws.csv so manual
+    corrections in draws.csv always update the Win Log badge cleanly.
     """
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
@@ -454,7 +485,6 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         for _, r in completed_rows.iterrows()
     }
 
-    # Prune any history entry whose Session_ID is no longer completed in draws.csv (Undo Last support)
     existing_hist = {
         int(item["session_id"]): item
         for item in state.get("history", [])
@@ -466,33 +496,7 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
     for pred in upcoming_list:
         sid = int(pred["session_id"])
         if sid in completed_map and sid not in existing_hist:
-            row = completed_map[sid]
-            actual = int(row["Winning_Number"])
-            act_str = f"{actual:02d}"
-            rev_str = f"{actual % 10}{actual // 10}"
-            act_digits = {actual // 10, actual % 10}
-
-            top_pairs = [p["pair"] for p in pred.get("top_pairs", [])]
-            anchor1 = int(pred["primary_anchor"]["digit"])
-            anchor2 = int(pred["secondary_anchor"]["digit"])
-
-            if act_str in top_pairs[:6]:
-                outcome = "EXACT"
-            elif rev_str in top_pairs[:6] and act_str != rev_str:
-                outcome = "REVERSE"
-            elif anchor1 in act_digits or anchor2 in act_digits:
-                outcome = "ANCHOR_HIT"
-            else:
-                outcome = "MISS"
-
-            pred["short_date"] = format_short_date(str(row["Date"]))
-            pred["day_full"] = format_day_name(str(row["Date"]))
-            pred["day"] = format_day_short(str(row["Date"]))
-            pred["actual"] = act_str
-            pred["outcome"] = outcome
-            pred["hit_primary_anchor"] = bool(anchor1 in act_digits)
-            pred["hit_secondary_anchor"] = bool(anchor2 in act_digits)
-            existing_hist[sid] = pred
+            existing_hist[sid] = grade_consensus_item(pred, completed_map[sid])
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
@@ -501,8 +505,8 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
 
     for item in sorted_hist:
         row = completed_map[int(item["session_id"])]
+        grade_consensus_item(item, row)
         actual = int(row["Winning_Number"])
-        item["actual"] = f"{actual:02d}"
 
         for m_name, m_info in item.get("models", {}).items():
             st = rebuilt_stats.setdefault(m_name, default_model_stat())
@@ -679,7 +683,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions & Win Log rollback synced.")
+    print("[OK] SAI 2D predictions & Win Log outcome badges re-synced.")
 
 
 if __name__ == "__main__":
