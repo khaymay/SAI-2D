@@ -144,7 +144,6 @@ def build_features(data: pd.DataFrame):
         d[f"lag_{lag}_units"] = s % 10
         d[f"lag_{lag}_brake"] = (d[f"lag_{lag}_tens"] + d[f"lag_{lag}_units"]) % 10
 
-    # Lean TabPFN interaction features
     d["lag1_t_x_pm"] = d["lag_1_tens"] * d["Is_PM"]
     d["lag1_u_x_pm"] = d["lag_1_units"] * d["Is_PM"]
     d["lag1_is_double"] = (d["lag_1_tens"] == d["lag_1_units"]).astype(float)
@@ -210,7 +209,6 @@ def build_features(data: pd.DataFrame):
     ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
     tree_cols = [c for c in d.columns if c not in ignore_cols]
 
-    # Dedicated 18-feature lean matrix for TabPFN-3.5
     tabpfn_lean_cols = [
         "Is_PM", "DayOfWeek", "sin_doy", "cos_doy",
         "lag_1_tens", "lag_1_units", "lag_1_brake",
@@ -346,7 +344,7 @@ def fit_ml_models(
                 tp_heads.append(clf)
             models["TabPFN_3.5"] = tuple(tp_heads)
         except Exception as exc:
-            print(f"[WARN] TabPFN-3.5 skipped due to API error: {exc}")
+            print(f"[WARN] TabPFN-3.5 skipped during fit: {exc}")
 
     return models
 
@@ -550,19 +548,13 @@ def main():
     y_train_num = train_df["Winning_Number"].astype(int).values
 
     ml_models = fit_ml_models(X_train_full, X_train_lean, y_train_num)
-    active_weights = {
-        m: state["model_weights"].get(m, 0.20)
-        for m in MODEL_NAMES
-        if m in ml_models or m == "Bayesian_Markov"
-    }
-    w_sum = sum(active_weights.values())
-    active_weights = {m: w / w_sum for m, w in active_weights.items()}
 
     # Autoregressive Sequential Chaining across the next 10 open trading slots
     sim_df = df.copy()
     open_sids = sim_df.loc[sim_df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:10]
     new_upcoming = []
     chained_pairs_so_far = []
+    tabpfn_quota_exhausted = False
 
     for step_idx, sid in enumerate(open_sids):
         step_feats, _, _ = build_features(sim_df)
@@ -578,15 +570,27 @@ def main():
         }
 
         for m_name, (clf_t, clf_u, clf_b) in ml_models.items():
+            if m_name == "TabPFN_3.5" and tabpfn_quota_exhausted:
+                continue
             X_in = X_next_lean if m_name == "TabPFN_3.5" else X_next_full
-            pt = clf_t.predict_proba(X_in)[0]
-            pu = clf_u.predict_proba(X_in)[0]
-            pb = clf_b.predict_proba(X_in)[0]
-            model_grids[m_name] = combine_t_u_brake(pt, pu, pb)
+            try:
+                pt = clf_t.predict_proba(X_in)[0]
+                pu = clf_u.predict_proba(X_in)[0]
+                pb = clf_b.predict_proba(X_in)[0]
+                model_grids[m_name] = combine_t_u_brake(pt, pu, pb)
+            except Exception as exc:
+                print(f"[WARN] {m_name} skipped at step {step_idx + 1}: {exc}")
+                if m_name == "TabPFN_3.5":
+                    tabpfn_quota_exhausted = True
+
+        # Re-normalize active weights dynamically based on models available for this step
+        step_weights = {m: state["model_weights"].get(m, 0.20) for m in model_grids}
+        w_sum = sum(step_weights.values())
+        step_weights = {m: w / w_sum for m, w in step_weights.items()}
 
         p_consensus = np.zeros(100)
         for m_name, grid in model_grids.items():
-            p_consensus += active_weights[m_name] * grid
+            p_consensus += step_weights[m_name] * grid
         p_consensus /= p_consensus.sum()
 
         p_anchor_consensus = grid_to_anchor_probs(p_consensus)
@@ -629,7 +633,6 @@ def main():
                 break
 
         top1_pair_str = anchor_filtered_pairs[0]["pair"]
-        # Feed #1 predicted pair into sim_df so the next draw in the chain uses it
         sim_df.loc[row_mask, "Winning_Number"] = float(int(top1_pair_str))
 
         raw_date = str(target_row["Date"])
@@ -665,7 +668,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D chained 10-draw forecast, TabPFN lean features, Thai holidays & guarded weights updated.")
+    print("[OK] SAI 2D predictions updated (with graceful TabPFN quota fallback).")
 
 
 if __name__ == "__main__":
