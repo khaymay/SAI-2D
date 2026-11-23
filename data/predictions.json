@@ -1,6 +1,6 @@
 {
   "app_name": "SAI 2D",
-  "updated_at": "23 Nov \u2022 10:29 PM MMT",
+  "updated_at": "23 Nov \u2022 10:37 PM MMT",
   "model_weights": {
     "TabPFN_3.5": 0.1519,
     "LightGBM": 0.3558,
@@ -1765,8 +1765,8 @@
         }
       },
       "actual": "96",
-      "outcome": "REVERSE",
-      "hit_primary_anchor": true,
+      "outcome": "MISS",
+      "hit_primary_anchor": false,
       "hit_secondary_anchor": false
     },
     {
@@ -3612,7 +3612,7 @@
       "hit_secondary_anchor": false
     }
   ],
-  "updated_at_iso": "2026-11-23T22:29:14.586103+06:30",
+  "updated_at_iso": "2026-11-23T22:37:21.018621+06:30",
   "thai_holidays": {
     "1/1/2023": "New Year's Day",
     "1/2/2023": "New Year's Day (in lieu)",
