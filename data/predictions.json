@@ -1,12 +1,12 @@
 {
   "app_name": "SAI 2D",
-  "updated_at": "20 Nov \u2022 4:35 PM MMT",
+  "updated_at": "23 Nov \u2022 9:42 AM MMT",
   "model_weights": {
-    "TabPFN_3.5": 0.1054,
-    "LightGBM": 0.45,
-    "CatBoost": 0.1236,
-    "L2_Logistic": 0.1475,
-    "Bayesian_Markov": 0.1735
+    "TabPFN_3.5": 0.136,
+    "LightGBM": 0.3567,
+    "CatBoost": 0.1507,
+    "L2_Logistic": 0.1689,
+    "Bayesian_Markov": 0.1877
   },
   "model_stats": {
     "TabPFN_3.5": {
@@ -119,80 +119,76 @@
       "day_full": "Monday",
       "session": "AM",
       "forecast_mode": "LIVE_LAG",
+      "chained_from": [],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.2966,
-        "votes": "2/5"
+        "digit": 8,
+        "prob": 0.3027,
+        "votes": "2/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2489,
-        "votes": "3/5"
+        "digit": 7,
+        "prob": 0.2956,
+        "votes": "1/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "87",
+        "78"
       ],
       "top_pairs": [
         {
           "pair": "87",
           "reverse": "78",
-          "prob": 0.0917,
+          "prob": 0.1498,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "47",
-          "reverse": "74",
-          "prob": 0.0885,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
           "pair": "83",
           "reverse": "38",
-          "prob": 0.0374,
+          "prob": 0.0389,
+          "contains_primary": true,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "47",
+          "reverse": "74",
+          "prob": 0.0329,
           "contains_primary": false,
           "supporters": [
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "27",
+          "reverse": "72",
+          "prob": 0.0181,
+          "contains_primary": false,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost"
           ]
         },
         {
           "pair": "17",
           "reverse": "71",
-          "prob": 0.0203,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "38",
-          "reverse": "83",
-          "prob": 0.0198,
+          "prob": 0.0169,
           "contains_primary": false,
-          "supporters": []
+          "supporters": [
+            "LightGBM"
+          ]
         },
         {
-          "pair": "27",
-          "reverse": "72",
-          "prob": 0.0144,
+          "pair": "81",
+          "reverse": "18",
+          "prob": 0.0143,
           "contains_primary": true,
-          "supporters": [
-            "Bayesian_Markov",
-            "LightGBM",
-            "TabPFN_3.5"
-          ]
+          "supporters": []
         }
       ],
       "models": {
@@ -209,41 +205,31 @@
         "LightGBM": {
           "anchor_digit": 7,
           "backup_digit": 8,
-          "anchor_prob": 0.417,
+          "anchor_prob": 0.4291,
           "top_pairs": [
-            "47",
             "87",
-            "32"
+            "32",
+            "47"
           ]
         },
         "CatBoost": {
           "anchor_digit": 5,
-          "backup_digit": 8,
-          "anchor_prob": 0.2311,
+          "backup_digit": 6,
+          "anchor_prob": 0.235,
           "top_pairs": [
-            "87",
             "65",
-            "05"
+            "56",
+            "27"
           ]
         },
         "L2_Logistic": {
           "anchor_digit": 5,
           "backup_digit": 8,
-          "anchor_prob": 0.3476,
+          "anchor_prob": 0.348,
           "top_pairs": [
             "87",
-            "35",
-            "83"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 4,
-          "anchor_prob": 0.2158,
-          "top_pairs": [
             "83",
-            "17",
-            "43"
+            "35"
           ]
         }
       }
@@ -255,136 +241,120 @@
       "day": "Mon",
       "day_full": "Monday",
       "session": "PM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "87"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.3053,
-        "votes": "5/5"
+        "digit": 2,
+        "prob": 0.3562,
+        "votes": "2/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2454,
-        "votes": "1/5"
+        "digit": 3,
+        "prob": 0.2748,
+        "votes": "2/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "23",
+        "32"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1181,
+          "pair": "92",
+          "reverse": "29",
+          "prob": 0.0769,
           "contains_primary": true,
           "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "LightGBM"
           ]
         },
         {
-          "pair": "17",
-          "reverse": "71",
-          "prob": 0.0368,
-          "contains_primary": true,
+          "pair": "38",
+          "reverse": "83",
+          "prob": 0.072,
+          "contains_primary": false,
           "supporters": [
             "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "CatBoost"
           ]
         },
         {
-          "pair": "47",
-          "reverse": "74",
-          "prob": 0.0321,
+          "pair": "22",
+          "reverse": "22",
+          "prob": 0.0585,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "CatBoost"
+          ]
+        },
+        {
+          "pair": "32",
+          "reverse": "23",
+          "prob": 0.0566,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
           ]
         },
         {
           "pair": "83",
           "reverse": "38",
-          "prob": 0.0159,
+          "prob": 0.0285,
+          "contains_primary": false,
+          "supporters": [
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "35",
+          "reverse": "53",
+          "prob": 0.025,
           "contains_primary": false,
           "supporters": []
-        },
-        {
-          "pair": "80",
-          "reverse": "08",
-          "prob": 0.0148,
-          "contains_primary": false,
-          "supporters": [
-            "Bayesian_Markov"
-          ]
-        },
-        {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0138,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 0,
-          "backup_digit": 7,
-          "anchor_prob": 0.222,
+          "anchor_digit": 7,
+          "backup_digit": 3,
+          "anchor_prob": 0.2416,
           "top_pairs": [
-            "40",
             "28",
-            "39"
+            "74",
+            "73"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
-          "backup_digit": 8,
-          "anchor_prob": 0.3631,
+          "anchor_digit": 2,
+          "backup_digit": 3,
+          "anchor_prob": 0.5379,
           "top_pairs": [
-            "87",
-            "32",
-            "41"
+            "38",
+            "92",
+            "32"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.2544,
+          "anchor_digit": 8,
+          "backup_digit": 2,
+          "anchor_prob": 0.235,
           "top_pairs": [
-            "87",
-            "77",
-            "17"
+            "08",
+            "78",
+            "22"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 7,
-          "backup_digit": 1,
-          "anchor_prob": 0.3724,
+          "anchor_digit": 1,
+          "backup_digit": 7,
+          "anchor_prob": 0.3379,
           "top_pairs": [
             "17",
-            "87",
-            "53"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 4,
-          "anchor_prob": 0.2263,
-          "top_pairs": [
-            "77",
-            "73",
-            "70"
+            "13",
+            "83"
           ]
         }
       }
@@ -396,140 +366,132 @@
       "day": "Tue",
       "day_full": "Tuesday",
       "session": "AM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "87",
+        "92"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.3014,
-        "votes": "5/5"
+        "digit": 1,
+        "prob": 0.3566,
+        "votes": "3/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2517,
-        "votes": "1/5"
+        "digit": 7,
+        "prob": 0.2761,
+        "votes": "3/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "17",
+        "71"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1242,
+          "pair": "15",
+          "reverse": "51",
+          "prob": 0.0883,
           "contains_primary": true,
           "supporters": [
-            "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
           "pair": "17",
           "reverse": "71",
-          "prob": 0.0319,
+          "prob": 0.0658,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
-          "pair": "47",
-          "reverse": "74",
-          "prob": 0.0286,
+          "pair": "16",
+          "reverse": "61",
+          "prob": 0.0284,
           "contains_primary": true,
           "supporters": [
-            "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
-          "pair": "83",
-          "reverse": "38",
-          "prob": 0.0149,
+          "pair": "76",
+          "reverse": "67",
+          "prob": 0.0258,
           "contains_primary": false,
           "supporters": [
-            "TabPFN_3.5"
+            "Bayesian_Markov"
           ]
         },
         {
-          "pair": "80",
-          "reverse": "08",
-          "prob": 0.0142,
-          "contains_primary": false,
-          "supporters": []
-        },
-        {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0128,
+          "pair": "71",
+          "reverse": "17",
+          "prob": 0.0255,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "18",
+          "reverse": "81",
+          "prob": 0.0189,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
           ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
           "anchor_digit": 7,
-          "backup_digit": 1,
-          "anchor_prob": 0.2184,
+          "backup_digit": 5,
+          "anchor_prob": 0.2252,
           "top_pairs": [
-            "17",
-            "97",
-            "13"
+            "71",
+            "21",
+            "70"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
-          "backup_digit": 8,
-          "anchor_prob": 0.3705,
+          "anchor_digit": 1,
+          "backup_digit": 7,
+          "anchor_prob": 0.3501,
           "top_pairs": [
-            "87",
-            "32",
-            "41"
+            "06",
+            "17",
+            "15"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.2538,
+          "anchor_digit": 1,
+          "backup_digit": 7,
+          "anchor_prob": 0.2547,
           "top_pairs": [
-            "87",
             "17",
-            "77"
+            "16",
+            "18"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 7,
+          "anchor_digit": 1,
           "backup_digit": 5,
-          "anchor_prob": 0.3084,
+          "anchor_prob": 0.6773,
           "top_pairs": [
+            "15",
             "17",
-            "87",
-            "53"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 3,
-          "anchor_prob": 0.2203,
-          "top_pairs": [
-            "83",
-            "87",
-            "43"
+            "18"
           ]
         }
       }
@@ -541,139 +503,124 @@
       "day": "Tue",
       "day_full": "Tuesday",
       "session": "PM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "92",
+        "15"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.3022,
-        "votes": "4/5"
+        "digit": 3,
+        "prob": 0.3983,
+        "votes": "2/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2586,
-        "votes": "2/5"
+        "digit": 1,
+        "prob": 0.3262,
+        "votes": "2/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "31",
+        "13"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1224,
+          "pair": "13",
+          "reverse": "31",
+          "prob": 0.1542,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "17",
-          "reverse": "71",
-          "prob": 0.0351,
-          "contains_primary": true,
-          "supporters": [
-            "Bayesian_Markov",
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "47",
-          "reverse": "74",
-          "prob": 0.03,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
           "pair": "83",
           "reverse": "38",
-          "prob": 0.0178,
-          "contains_primary": false,
-          "supporters": [
-            "Bayesian_Markov",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "80",
-          "reverse": "08",
-          "prob": 0.015,
-          "contains_primary": false,
-          "supporters": [
-            "Bayesian_Markov"
-          ]
-        },
-        {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0122,
+          "prob": 0.0791,
           "contains_primary": true,
           "supporters": [
+            "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "53",
+          "reverse": "35",
+          "prob": 0.064,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "17",
+          "reverse": "71",
+          "prob": 0.0482,
+          "contains_primary": false,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "15",
+          "reverse": "51",
+          "prob": 0.0324,
+          "contains_primary": false,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "73",
+          "reverse": "37",
+          "prob": 0.0226,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
           ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 0,
+          "anchor_digit": 4,
           "backup_digit": 8,
-          "anchor_prob": 0.2413,
+          "anchor_prob": 0.2168,
           "top_pairs": [
-            "17",
             "20",
+            "46",
             "83"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
+          "anchor_digit": 3,
           "backup_digit": 8,
-          "anchor_prob": 0.3705,
+          "anchor_prob": 0.5537,
           "top_pairs": [
-            "87",
-            "32",
-            "41"
+            "13",
+            "80",
+            "83"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.2541,
+          "anchor_digit": 8,
+          "backup_digit": 1,
+          "anchor_prob": 0.2376,
           "top_pairs": [
-            "87",
-            "17",
-            "77"
+            "13",
+            "80",
+            "86"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.3333,
+          "anchor_digit": 1,
+          "backup_digit": 3,
+          "anchor_prob": 0.643,
           "top_pairs": [
-            "17",
-            "87",
-            "53"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 4,
-          "anchor_prob": 0.2204,
-          "top_pairs": [
-            "77",
-            "87",
+            "13",
+            "15",
             "83"
           ]
         }
@@ -686,136 +633,121 @@
       "day": "Wed",
       "day_full": "Wednesday",
       "session": "AM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "15",
+        "13"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.2887,
-        "votes": "4/5"
+        "digit": 0,
+        "prob": 0.2328,
+        "votes": "1/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2528,
-        "votes": "1/5"
+        "digit": 7,
+        "prob": 0.2285,
+        "votes": "1/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "07",
+        "70"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1229,
+          "pair": "20",
+          "reverse": "02",
+          "prob": 0.0376,
           "contains_primary": true,
           "supporters": [
-            "Bayesian_Markov",
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "30",
+          "reverse": "03",
+          "prob": 0.0319,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "40",
+          "reverse": "04",
+          "prob": 0.0311,
+          "contains_primary": true,
+          "supporters": [
             "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "CatBoost"
+          ]
+        },
+        {
+          "pair": "10",
+          "reverse": "01",
+          "prob": 0.0276,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "L2_Logistic"
           ]
         },
         {
           "pair": "17",
           "reverse": "71",
-          "prob": 0.0293,
-          "contains_primary": true,
+          "prob": 0.027,
+          "contains_primary": false,
           "supporters": [
-            "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
           "pair": "47",
           "reverse": "74",
-          "prob": 0.0262,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "83",
-          "reverse": "38",
-          "prob": 0.0158,
-          "contains_primary": false,
-          "supporters": [
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "80",
-          "reverse": "08",
-          "prob": 0.015,
+          "prob": 0.0265,
           "contains_primary": false,
           "supporters": []
-        },
-        {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0127,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 6,
-          "backup_digit": 0,
-          "anchor_prob": 0.2078,
+          "anchor_digit": 5,
+          "backup_digit": 1,
+          "anchor_prob": 0.2228,
           "top_pairs": [
-            "87",
             "96",
-            "42"
+            "42",
+            "87"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
-          "backup_digit": 8,
-          "anchor_prob": 0.3631,
+          "anchor_digit": 0,
+          "backup_digit": 2,
+          "anchor_prob": 0.3082,
           "top_pairs": [
-            "87",
-            "32",
-            "41"
+            "26",
+            "20",
+            "30"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.2418,
+          "anchor_digit": 5,
+          "backup_digit": 7,
+          "anchor_prob": 0.219,
           "top_pairs": [
-            "87",
-            "17",
-            "50"
+            "26",
+            "40",
+            "17"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 5,
-          "backup_digit": 7,
-          "anchor_prob": 0.2984,
+          "anchor_digit": 1,
+          "backup_digit": 5,
+          "anchor_prob": 0.4918,
           "top_pairs": [
-            "87",
-            "17",
-            "53"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 3,
-          "anchor_prob": 0.22,
-          "top_pairs": [
-            "83",
-            "87",
-            "86"
+            "15",
+            "10",
+            "14"
           ]
         }
       }
@@ -827,137 +759,131 @@
       "day": "Wed",
       "day_full": "Wednesday",
       "session": "PM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "13",
+        "20"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.2905,
-        "votes": "4/5"
+        "digit": 1,
+        "prob": 0.4018,
+        "votes": "3/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2516,
-        "votes": "1/5"
+        "digit": 0,
+        "prob": 0.2781,
+        "votes": "3/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "10",
+        "01"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1195,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "17",
-          "reverse": "71",
-          "prob": 0.0314,
+          "pair": "13",
+          "reverse": "31",
+          "prob": 0.1484,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
-          "pair": "47",
-          "reverse": "74",
-          "prob": 0.0274,
+          "pair": "10",
+          "reverse": "01",
+          "prob": 0.0949,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "17",
+          "reverse": "71",
+          "prob": 0.0692,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "83",
-          "reverse": "38",
-          "prob": 0.0164,
-          "contains_primary": false,
-          "supporters": [
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
           "pair": "80",
           "reverse": "08",
-          "prob": 0.0141,
+          "prob": 0.0559,
           "contains_primary": false,
-          "supporters": []
+          "supporters": [
+            "Bayesian_Markov"
+          ]
         },
         {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0129,
+          "pair": "40",
+          "reverse": "04",
+          "prob": 0.0437,
+          "contains_primary": false,
+          "supporters": [
+            "Bayesian_Markov",
+            "CatBoost"
+          ]
+        },
+        {
+          "pair": "14",
+          "reverse": "41",
+          "prob": 0.0204,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
-          "anchor_digit": 1,
-          "backup_digit": 3,
-          "anchor_prob": 0.2202,
+          "anchor_digit": 0,
+          "backup_digit": 8,
+          "anchor_prob": 0.2259,
           "top_pairs": [
             "13",
-            "98",
+            "03",
             "40"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
-          "backup_digit": 8,
-          "anchor_prob": 0.3631,
+          "anchor_digit": 1,
+          "backup_digit": 3,
+          "anchor_prob": 0.6046,
           "top_pairs": [
-            "87",
-            "32",
-            "41"
+            "13",
+            "17",
+            "10"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.242,
+          "anchor_digit": 1,
+          "backup_digit": 0,
+          "anchor_prob": 0.2366,
           "top_pairs": [
-            "87",
-            "17",
-            "50"
+            "13",
+            "40",
+            "10"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.2962,
+          "anchor_digit": 1,
+          "backup_digit": 0,
+          "anchor_prob": 0.3909,
           "top_pairs": [
-            "17",
-            "87",
-            "53"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 3,
-          "anchor_prob": 0.2181,
-          "top_pairs": [
-            "87",
+            "10",
             "83",
-            "77"
+            "13"
           ]
         }
       }
@@ -969,138 +895,130 @@
       "day": "Thu",
       "day_full": "Thursday",
       "session": "AM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "20",
+        "13"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.3223,
-        "votes": "3/5"
+        "digit": 1,
+        "prob": 0.3243,
+        "votes": "4/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.2682,
-        "votes": "2/5"
+        "digit": 4,
+        "prob": 0.2894,
+        "votes": "1/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "14",
+        "41"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1473,
-          "contains_primary": true,
+          "pair": "44",
+          "reverse": "44",
+          "prob": 0.0553,
+          "contains_primary": false,
           "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "LightGBM"
           ]
         },
         {
-          "pair": "47",
-          "reverse": "74",
-          "prob": 0.0307,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "17",
-          "reverse": "71",
-          "prob": 0.0286,
+          "pair": "71",
+          "reverse": "17",
+          "prob": 0.0484,
           "contains_primary": true,
           "supporters": [
             "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
-          "pair": "83",
-          "reverse": "38",
-          "prob": 0.0141,
-          "contains_primary": false,
-          "supporters": [
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "80",
-          "reverse": "08",
-          "prob": 0.0132,
-          "contains_primary": false,
-          "supporters": [
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0125,
+          "pair": "11",
+          "reverse": "11",
+          "prob": 0.0455,
           "contains_primary": true,
           "supporters": [
+            "Bayesian_Markov",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "41",
+          "reverse": "14",
+          "prob": 0.0419,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "46",
+          "reverse": "64",
+          "prob": 0.0242,
+          "contains_primary": false,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "91",
+          "reverse": "19",
+          "prob": 0.0221,
+          "contains_primary": true,
+          "supporters": [
+            "Bayesian_Markov",
+            "CatBoost",
+            "L2_Logistic"
           ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
           "anchor_digit": 1,
-          "backup_digit": 0,
-          "anchor_prob": 0.2232,
+          "backup_digit": 5,
+          "anchor_prob": 0.2345,
           "top_pairs": [
-            "71",
             "75",
-            "30"
+            "15",
+            "71"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
-          "backup_digit": 8,
-          "anchor_prob": 0.45,
+          "anchor_digit": 4,
+          "backup_digit": 1,
+          "anchor_prob": 0.4406,
           "top_pairs": [
-            "87",
-            "32",
-            "41"
+            "44",
+            "41",
+            "71"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
+          "anchor_digit": 1,
           "backup_digit": 5,
-          "anchor_prob": 0.2418,
+          "anchor_prob": 0.2701,
           "top_pairs": [
-            "87",
-            "17",
-            "50"
+            "75",
+            "11",
+            "71"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 5,
-          "backup_digit": 8,
-          "anchor_prob": 0.3096,
+          "anchor_digit": 1,
+          "backup_digit": 5,
+          "anchor_prob": 0.38,
           "top_pairs": [
-            "87",
-            "17",
-            "53"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 3,
-          "anchor_prob": 0.2217,
-          "top_pairs": [
-            "83",
-            "87",
-            "80"
+            "11",
+            "75",
+            "81"
           ]
         }
       }
@@ -1112,137 +1030,383 @@
       "day": "Thu",
       "day_full": "Thursday",
       "session": "PM",
-      "forecast_mode": "BASE_CALENDAR",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "13",
+        "44"
+      ],
       "primary_anchor": {
-        "digit": 7,
-        "prob": 0.3242,
-        "votes": "4/5"
+        "digit": 4,
+        "prob": 0.3043,
+        "votes": "1/4"
       },
       "secondary_anchor": {
-        "digit": 8,
-        "prob": 0.269,
-        "votes": "1/5"
+        "digit": 9,
+        "prob": 0.2232,
+        "votes": "1/4"
       },
       "intersection_pairs": [
-        "78",
-        "87"
+        "49",
+        "94"
       ],
       "top_pairs": [
         {
-          "pair": "87",
-          "reverse": "78",
-          "prob": 0.1465,
+          "pair": "40",
+          "reverse": "04",
+          "prob": 0.0472,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "CatBoost"
           ]
         },
         {
           "pair": "47",
           "reverse": "74",
-          "prob": 0.0324,
+          "prob": 0.0445,
           "contains_primary": true,
           "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "TabPFN_3.5"
+            "LightGBM"
           ]
         },
         {
-          "pair": "17",
-          "reverse": "71",
-          "prob": 0.0305,
-          "contains_primary": true,
-          "supporters": [
-            "LightGBM",
-            "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
-          ]
-        },
-        {
-          "pair": "83",
-          "reverse": "38",
-          "prob": 0.0146,
+          "pair": "97",
+          "reverse": "79",
+          "prob": 0.0343,
           "contains_primary": false,
           "supporters": [
-            "TabPFN_3.5"
+            "L2_Logistic"
           ]
         },
         {
-          "pair": "80",
-          "reverse": "08",
-          "prob": 0.0131,
+          "pair": "41",
+          "reverse": "14",
+          "prob": 0.0333,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "92",
+          "reverse": "29",
+          "prob": 0.0327,
           "contains_primary": false,
           "supporters": [
-            "Bayesian_Markov"
+            "L2_Logistic"
           ]
         },
         {
-          "pair": "57",
-          "reverse": "75",
-          "prob": 0.0128,
+          "pair": "96",
+          "reverse": "69",
+          "prob": 0.0317,
+          "contains_primary": false,
+          "supporters": [
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 3,
+          "backup_digit": 0,
+          "anchor_prob": 0.2253,
+          "top_pairs": [
+            "90",
+            "53",
+            "06"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 4,
+          "backup_digit": 7,
+          "anchor_prob": 0.501,
+          "top_pairs": [
+            "40",
+            "47",
+            "41"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 0,
+          "backup_digit": 1,
+          "anchor_prob": 0.2532,
+          "top_pairs": [
+            "10",
+            "90",
+            "96"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 9,
+          "backup_digit": 2,
+          "anchor_prob": 0.3666,
+          "top_pairs": [
+            "92",
+            "96",
+            "01"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1872,
+      "date": "11/27/2026",
+      "short_date": "27 Nov",
+      "day": "Fri",
+      "day_full": "Friday",
+      "session": "AM",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "44",
+        "40"
+      ],
+      "primary_anchor": {
+        "digit": 4,
+        "prob": 0.3947,
+        "votes": "2/4"
+      },
+      "secondary_anchor": {
+        "digit": 9,
+        "prob": 0.2462,
+        "votes": "1/4"
+      },
+      "intersection_pairs": [
+        "49",
+        "94"
+      ],
+      "top_pairs": [
+        {
+          "pair": "44",
+          "reverse": "44",
+          "prob": 0.1113,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "96",
+          "reverse": "69",
+          "prob": 0.0438,
+          "contains_primary": false,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "92",
+          "reverse": "29",
+          "prob": 0.0349,
+          "contains_primary": false,
+          "supporters": [
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "14",
+          "reverse": "41",
+          "prob": 0.0325,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "42",
+          "reverse": "24",
+          "prob": 0.029,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM"
+          ]
+        },
+        {
+          "pair": "95",
+          "reverse": "59",
+          "prob": 0.0263,
+          "contains_primary": false,
+          "supporters": [
+            "Bayesian_Markov",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        }
+      ],
+      "models": {
+        "Bayesian_Markov": {
+          "anchor_digit": 5,
+          "backup_digit": 4,
+          "anchor_prob": 0.2572,
+          "top_pairs": [
+            "50",
+            "45",
+            "55"
+          ]
+        },
+        "LightGBM": {
+          "anchor_digit": 4,
+          "backup_digit": 8,
+          "anchor_prob": 0.679,
+          "top_pairs": [
+            "44",
+            "14",
+            "42"
+          ]
+        },
+        "CatBoost": {
+          "anchor_digit": 5,
+          "backup_digit": 3,
+          "anchor_prob": 0.2406,
+          "top_pairs": [
+            "35",
+            "80",
+            "50"
+          ]
+        },
+        "L2_Logistic": {
+          "anchor_digit": 9,
+          "backup_digit": 2,
+          "anchor_prob": 0.5136,
+          "top_pairs": [
+            "96",
+            "92",
+            "87"
+          ]
+        }
+      }
+    },
+    {
+      "session_id": 1873,
+      "date": "11/27/2026",
+      "short_date": "27 Nov",
+      "day": "Fri",
+      "day_full": "Friday",
+      "session": "PM",
+      "forecast_mode": "CHAINED",
+      "chained_from": [
+        "40",
+        "44"
+      ],
+      "primary_anchor": {
+        "digit": 8,
+        "prob": 0.2763,
+        "votes": "3/4"
+      },
+      "secondary_anchor": {
+        "digit": 5,
+        "prob": 0.2299,
+        "votes": "1/4"
+      },
+      "intersection_pairs": [
+        "85",
+        "58"
+      ],
+      "top_pairs": [
+        {
+          "pair": "87",
+          "reverse": "78",
+          "prob": 0.0746,
           "contains_primary": true,
           "supporters": [
             "LightGBM",
             "CatBoost",
-            "L2_Logistic",
-            "TabPFN_3.5"
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "05",
+          "reverse": "50",
+          "prob": 0.0498,
+          "contains_primary": false,
+          "supporters": [
+            "Bayesian_Markov",
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "85",
+          "reverse": "58",
+          "prob": 0.0344,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "95",
+          "reverse": "59",
+          "prob": 0.0258,
+          "contains_primary": false,
+          "supporters": []
+        },
+        {
+          "pair": "86",
+          "reverse": "68",
+          "prob": 0.0192,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
+          ]
+        },
+        {
+          "pair": "82",
+          "reverse": "28",
+          "prob": 0.0178,
+          "contains_primary": true,
+          "supporters": [
+            "LightGBM",
+            "CatBoost",
+            "L2_Logistic"
           ]
         }
       ],
       "models": {
         "Bayesian_Markov": {
           "anchor_digit": 0,
-          "backup_digit": 3,
-          "anchor_prob": 0.2307,
+          "backup_digit": 1,
+          "anchor_prob": 0.2325,
           "top_pairs": [
-            "90",
-            "53",
-            "78"
+            "03",
+            "94",
+            "01"
           ]
         },
         "LightGBM": {
-          "anchor_digit": 7,
-          "backup_digit": 8,
-          "anchor_prob": 0.45,
+          "anchor_digit": 8,
+          "backup_digit": 7,
+          "anchor_prob": 0.3179,
           "top_pairs": [
             "87",
-            "32",
-            "41"
+            "96",
+            "05"
           ]
         },
         "CatBoost": {
-          "anchor_digit": 7,
-          "backup_digit": 5,
-          "anchor_prob": 0.242,
+          "anchor_digit": 8,
+          "backup_digit": 0,
+          "anchor_prob": 0.2365,
           "top_pairs": [
+            "05",
             "87",
-            "17",
-            "50"
+            "96"
           ]
         },
         "L2_Logistic": {
-          "anchor_digit": 5,
-          "backup_digit": 7,
-          "anchor_prob": 0.2896,
+          "anchor_digit": 8,
+          "backup_digit": 5,
+          "anchor_prob": 0.3597,
           "top_pairs": [
-            "17",
-            "53",
-            "87"
-          ]
-        },
-        "TabPFN_3.5": {
-          "anchor_digit": 7,
-          "backup_digit": 3,
-          "anchor_prob": 0.2202,
-          "top_pairs": [
-            "77",
-            "83",
-            "87"
+            "87",
+            "96",
+            "05"
           ]
         }
       }
@@ -2891,5 +3055,138 @@
       "hit_secondary_anchor": false
     }
   ],
-  "updated_at_iso": "2026-11-20T16:35:15.880380+06:30"
+  "updated_at_iso": "2026-11-23T09:42:11.837548+06:30",
+  "thai_holidays": {
+    "1/1/2023": "New Year's Day",
+    "1/2/2023": "New Year's Day (in lieu)",
+    "1/14/2023": "National Children's Day",
+    "4/6/2023": "Chakri Memorial Day",
+    "4/13/2023": "Songkran Festival",
+    "4/14/2023": "Songkran Festival",
+    "4/15/2023": "Songkran Festival",
+    "4/17/2023": "Songkran Festival (in lieu)",
+    "5/1/2023": "National Labor Day",
+    "12/5/2023": "HM King Bhumibol Adulyadej the Great's Birthday; National Day; National Father's Day",
+    "5/4/2023": "Coronation Day",
+    "6/3/2023": "HM Queen Suthida's Birthday; Visakha Bucha",
+    "6/5/2023": "HM Queen Suthida's Birthday (in lieu); Visakha Bucha (in lieu)",
+    "7/28/2023": "HM King Maha Vajiralongkorn's Birthday",
+    "8/12/2023": "HM Queen Sirikit The Queen Mother's Birthday; National Mother's Day",
+    "8/14/2023": "HM Queen Sirikit The Queen Mother's Birthday (in lieu); National Mother's Day (in lieu)",
+    "10/13/2023": "HM King Bhumibol Adulyadej Memorial Day",
+    "10/23/2023": "HM King Chulalongkorn Memorial Day",
+    "12/10/2023": "Constitution Day",
+    "12/11/2023": "Constitution Day (in lieu)",
+    "12/31/2023": "New Year's Eve",
+    "1/3/2023": "New Year's Eve (in lieu)",
+    "3/6/2023": "Makha Bucha",
+    "8/2/2023": "Buddhist Lent Day",
+    "8/1/2023": "Asarnha Bucha",
+    "5/5/2023": "Bridge Public Holiday",
+    "7/31/2023": "Bridge Public Holiday",
+    "12/29/2023": "Bridge Public Holiday",
+    "1/1/2024": "New Year's Day",
+    "1/13/2024": "National Children's Day",
+    "4/6/2024": "Chakri Memorial Day",
+    "4/8/2024": "Chakri Memorial Day (in lieu)",
+    "4/13/2024": "Songkran Festival",
+    "4/14/2024": "Songkran Festival",
+    "4/15/2024": "Songkran Festival",
+    "4/16/2024": "Songkran Festival (in lieu)",
+    "5/1/2024": "National Labor Day",
+    "12/5/2024": "HM King Bhumibol Adulyadej the Great's Birthday; National Day; National Father's Day",
+    "5/4/2024": "Coronation Day",
+    "5/6/2024": "Coronation Day (in lieu)",
+    "6/3/2024": "HM Queen Suthida's Birthday",
+    "7/28/2024": "HM King Maha Vajiralongkorn's Birthday",
+    "7/29/2024": "HM King Maha Vajiralongkorn's Birthday (in lieu)",
+    "8/12/2024": "HM Queen Sirikit The Queen Mother's Birthday; National Mother's Day",
+    "10/13/2024": "HM King Bhumibol Adulyadej Memorial Day",
+    "10/14/2024": "HM King Bhumibol Adulyadej Memorial Day (in lieu)",
+    "10/23/2024": "HM King Chulalongkorn Memorial Day",
+    "12/10/2024": "Constitution Day",
+    "12/31/2024": "New Year's Eve",
+    "2/24/2024": "Makha Bucha",
+    "2/26/2024": "Makha Bucha (in lieu)",
+    "5/22/2024": "Visakha Bucha",
+    "7/21/2024": "Buddhist Lent Day",
+    "7/20/2024": "Asarnha Bucha",
+    "7/22/2024": "Asarnha Bucha (in lieu)",
+    "4/12/2024": "Bridge Public Holiday",
+    "12/30/2024": "Bridge Public Holiday",
+    "1/1/2025": "New Year's Day",
+    "1/11/2025": "National Children's Day",
+    "4/6/2025": "Chakri Memorial Day",
+    "4/7/2025": "Chakri Memorial Day (in lieu)",
+    "4/13/2025": "Songkran Festival",
+    "4/14/2025": "Songkran Festival",
+    "4/15/2025": "Songkran Festival",
+    "4/16/2025": "Songkran Festival (in lieu)",
+    "5/1/2025": "National Labor Day",
+    "12/5/2025": "HM King Bhumibol Adulyadej the Great's Birthday; National Day; National Father's Day",
+    "5/4/2025": "Coronation Day",
+    "5/5/2025": "Coronation Day (in lieu)",
+    "6/3/2025": "HM Queen Suthida's Birthday",
+    "7/28/2025": "HM King Maha Vajiralongkorn's Birthday",
+    "8/12/2025": "HM Queen Sirikit The Queen Mother's Birthday; National Mother's Day",
+    "10/13/2025": "HM King Bhumibol Adulyadej Memorial Day",
+    "10/23/2025": "HM King Chulalongkorn Memorial Day",
+    "12/10/2025": "Constitution Day",
+    "12/31/2025": "New Year's Eve",
+    "2/12/2025": "Makha Bucha",
+    "5/11/2025": "Visakha Bucha",
+    "5/12/2025": "Visakha Bucha (in lieu)",
+    "7/11/2025": "Buddhist Lent Day",
+    "7/10/2025": "Asarnha Bucha",
+    "6/2/2025": "Bridge Public Holiday",
+    "8/11/2025": "Bridge Public Holiday",
+    "1/1/2026": "New Year's Day",
+    "1/10/2026": "National Children's Day",
+    "4/6/2026": "Chakri Memorial Day",
+    "4/13/2026": "Songkran Festival",
+    "4/14/2026": "Songkran Festival",
+    "4/15/2026": "Songkran Festival",
+    "5/1/2026": "National Labor Day",
+    "12/5/2026": "HM King Bhumibol Adulyadej the Great's Birthday; National Day; National Father's Day",
+    "12/7/2026": "HM King Bhumibol Adulyadej the Great's Birthday (in lieu); National Day (in lieu); National Father's Day (in lieu)",
+    "5/4/2026": "Coronation Day",
+    "6/3/2026": "HM Queen Suthida's Birthday",
+    "7/28/2026": "HM King Maha Vajiralongkorn's Birthday",
+    "8/12/2026": "HM Queen Sirikit The Queen Mother's Birthday; National Mother's Day",
+    "10/13/2026": "HM King Bhumibol Adulyadej Memorial Day",
+    "10/23/2026": "HM King Chulalongkorn Memorial Day",
+    "12/10/2026": "Constitution Day",
+    "12/31/2026": "New Year's Eve",
+    "3/3/2026": "Makha Bucha",
+    "5/31/2026": "Visakha Bucha",
+    "6/1/2026": "Visakha Bucha (in lieu)",
+    "7/30/2026": "Buddhist Lent Day",
+    "7/29/2026": "Asarnha Bucha",
+    "1/2/2026": "Bridge Public Holiday",
+    "1/1/2027": "New Year's Day",
+    "1/9/2027": "National Children's Day",
+    "4/6/2027": "Chakri Memorial Day",
+    "4/13/2027": "Songkran Festival",
+    "4/14/2027": "Songkran Festival",
+    "4/15/2027": "Songkran Festival",
+    "5/1/2027": "National Labor Day",
+    "5/3/2027": "National Labor Day (in lieu)",
+    "12/5/2027": "HM King Bhumibol Adulyadej the Great's Birthday; National Day; National Father's Day",
+    "12/6/2027": "HM King Bhumibol Adulyadej the Great's Birthday (in lieu); National Day (in lieu); National Father's Day (in lieu)",
+    "5/4/2027": "Coronation Day",
+    "6/3/2027": "HM Queen Suthida's Birthday",
+    "7/28/2027": "HM King Maha Vajiralongkorn's Birthday",
+    "8/12/2027": "HM Queen Sirikit The Queen Mother's Birthday; National Mother's Day",
+    "10/13/2027": "HM King Bhumibol Adulyadej Memorial Day",
+    "10/23/2027": "HM King Chulalongkorn Memorial Day",
+    "10/25/2027": "HM King Chulalongkorn Memorial Day (in lieu)",
+    "12/10/2027": "Constitution Day",
+    "12/31/2027": "New Year's Eve",
+    "2/21/2027": "Makha Bucha",
+    "2/22/2027": "Makha Bucha (in lieu)",
+    "5/20/2027": "Visakha Bucha",
+    "7/19/2027": "Buddhist Lent Day",
+    "7/18/2027": "Asarnha Bucha",
+    "7/20/2027": "Asarnha Bucha (in lieu)"
+  }
 }
