@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
+import holidays
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -17,6 +18,16 @@ ROLLING_WINDOW = 600
 
 # Precomputed (10, 10) lookup matrix of Brake = (t + u) % 10
 BRAKE_IDX = (np.arange(10)[:, None] + np.arange(10)[None, :]) % 10
+
+
+def get_thai_holiday_map(years: list[int]) -> dict[str, str]:
+    """Returns {'M/D/YYYY': 'Holiday Name'} for Thailand / SET market holidays."""
+    th_holidays = holidays.Thailand(years=years)
+    out = {}
+    for dt_obj, name in th_holidays.items():
+        key = f"{dt_obj.month}/{dt_obj.day}/{dt_obj.year}"
+        out[key] = str(name)
+    return out
 
 
 def format_short_date(date_str: str) -> str:
@@ -53,6 +64,7 @@ def load_existing_predictions() -> dict:
         "app_name": "SAI 2D",
         "updated_at": None,
         "updated_at_iso": None,
+        "thai_holidays": {},
         "model_weights": {m: 0.20 for m in MODEL_NAMES},
         "model_stats": {m: default_model_stat() for m in MODEL_NAMES},
         "drought_radar": {},
@@ -61,12 +73,20 @@ def load_existing_predictions() -> dict:
     }
 
 
-def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFrame:
-    open_count = int(df["Winning_Number"].isna().sum())
-    if open_count >= min_open_slots:
-        return df
+def ensure_future_slots(df: pd.DataFrame, th_map: dict[str, str], min_open_slots: int = 10) -> pd.DataFrame:
+    """
+    Removes any unplayed open rows that fall on Thai SET public holidays,
+    then generates at least `min_open_slots` (10 = full 5-day week) valid trading slots.
+    """
+    is_open = df["Winning_Number"].isna()
+    is_hol = df["Date"].astype(str).isin(th_map.keys())
+    cleaned = df[~(is_open & is_hol)].copy().reset_index(drop=True)
 
-    rows = df.to_dict("records")
+    open_count = int(cleaned["Winning_Number"].isna().sum())
+    if open_count >= min_open_slots and len(cleaned) == len(df):
+        return cleaned
+
+    rows = cleaned.to_dict("records")
     last = rows[-1]
     cur_sid = int(last["Session_ID"])
     cur_date = pd.to_datetime(last["Date"])
@@ -79,25 +99,33 @@ def ensure_future_slots(df: pd.DataFrame, min_open_slots: int = 8) -> pd.DataFra
         else:
             cur_pm = 0
             cur_date += pd.Timedelta(days=1)
-            while cur_date.weekday() >= 5:
+            while True:
+                date_key = f"{cur_date.month}/{cur_date.day}/{cur_date.year}"
+                if cur_date.weekday() < 5 and date_key not in th_map:
+                    break
                 cur_date += pd.Timedelta(days=1)
 
+        date_str = f"{cur_date.month}/{cur_date.day}/{cur_date.year}"
         rows.append({
             "Session_ID": cur_sid,
             "Year": int(cur_date.year),
             "Day_of_Year": int(cur_date.dayofyear),
-            "Date": f"{cur_date.month}/{cur_date.day}/{cur_date.year}",
+            "Date": date_str,
             "Is_PM": cur_pm,
             "Winning_Number": np.nan,
         })
 
     out = pd.DataFrame(rows)
+    out["Session_ID"] = np.arange(1, len(out) + 1)
     out.to_csv(DRAWS_PATH, index=False)
     return out
 
 
-def build_features(data: pd.DataFrame) -> pd.DataFrame:
-    """Leak-free momentum + Day-of-Week x AM/PM positional rate features."""
+def build_features(data: pd.DataFrame):
+    """
+    Returns (full_feature_df, tree_feature_cols, tabpfn_lean_cols).
+    TabPFN-3.5 gets a dedicated 18-feature matrix so its in-context attention is not diluted.
+    """
     d = data.copy()
     d["Date_dt"] = pd.to_datetime(d["Date"])
     d["DayOfWeek"] = d["Date_dt"].dt.dayofweek
@@ -115,6 +143,11 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
         d[f"lag_{lag}_tens"] = np.floor(s / 10.0)
         d[f"lag_{lag}_units"] = s % 10
         d[f"lag_{lag}_brake"] = (d[f"lag_{lag}_tens"] + d[f"lag_{lag}_units"]) % 10
+
+    # Lean TabPFN interaction features
+    d["lag1_t_x_pm"] = d["lag_1_tens"] * d["Is_PM"]
+    d["lag1_u_x_pm"] = d["lag_1_units"] * d["Is_PM"]
+    d["lag1_is_double"] = (d["lag_1_tens"] == d["lag_1_units"]).astype(float)
 
     tens_roll15, units_roll15 = np.zeros((n, 10)), np.zeros((n, 10))
     tens_roll50, units_roll50 = np.zeros((n, 10)), np.zeros((n, 10))
@@ -174,7 +207,19 @@ def build_features(data: pd.DataFrame) -> pd.DataFrame:
         d[f"dow_pm_units_rate_{k}"] = dow_u_rate[:, k]
         d[f"dow_pm_any_rate_{k}"] = dow_any_rate[:, k]
 
-    return d
+    ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
+    tree_cols = [c for c in d.columns if c not in ignore_cols]
+
+    # Dedicated 18-feature lean matrix for TabPFN-3.5
+    tabpfn_lean_cols = [
+        "Is_PM", "DayOfWeek", "sin_doy", "cos_doy",
+        "lag_1_tens", "lag_1_units", "lag_1_brake",
+        "lag_2_tens", "lag_2_units", "lag_2_brake",
+        "lag_3_tens", "lag_3_units", "lag_3_brake",
+        "lag_4_num", "lag_5_num",
+        "lag1_t_x_pm", "lag1_u_x_pm", "lag1_is_double",
+    ]
+    return d, tree_cols, tabpfn_lean_cols
 
 
 def compute_drought_radar(hist: pd.DataFrame) -> dict:
@@ -209,9 +254,7 @@ def combine_t_u_brake(pt: np.ndarray, pu: np.ndarray, pb: np.ndarray) -> np.ndar
     return grid / grid.sum()
 
 
-def predict_bayesian_pure_transition(
-    hist: pd.DataFrame, target_row: pd.Series, is_immediate_next: bool = True
-) -> np.ndarray:
+def predict_bayesian_pure_transition(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
     """Diverse Model 1: Pure Day-of-Week x Session + Intraday/Overnight Markov Transition."""
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
@@ -226,17 +269,6 @@ def predict_bayesian_pure_transition(
     mask = (dow_hist == t_dow) & (is_pm_hist == t_pm)
     sub_nums = nums[mask]
     p_exact_dow = (np.bincount(sub_nums, minlength=100) + 0.60) / (len(sub_nums) + 60.0)
-
-    if not is_immediate_next:
-        weights = 0.985 ** np.arange(len(nums) - 1, -1, -1)
-        p_t = np.bincount(tens, weights=weights, minlength=10) + 1.5
-        p_u = np.bincount(units, weights=weights, minlength=10) + 1.5
-        p_t /= p_t.sum()
-        p_u /= p_u.sum()
-        p_mom = np.outer(p_t, p_u).flatten()
-        grid = 0.55 * p_exact_dow + 0.45 * p_mom
-        grid = np.maximum(grid, 1e-6)
-        return grid / grid.sum()
 
     last_num = int(nums[-1])
     last_t, last_u = last_num // 10, last_num % 10
@@ -262,8 +294,12 @@ def predict_bayesian_pure_transition(
     return grid / grid.sum()
 
 
-def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
-    """Fits 3 heads (Tens, Units, Modulo-10 Brake) on the active 600-draw regime window."""
+def fit_ml_models(
+    X_train_full: pd.DataFrame,
+    X_train_lean: pd.DataFrame,
+    y_num: np.ndarray,
+):
+    """Fits 3 heads (Tens, Units, Modulo-10 Brake); TabPFN-3.5 uses the lean 18-feature matrix."""
     y_t = y_num // 10
     y_u = y_num % 10
     y_b = (y_t + y_u) % 10
@@ -276,7 +312,7 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
             learning_rate=0.04, num_leaves=15, subsample_for_bin=500,
             min_child_samples=20, n_jobs=-1, random_state=42, verbose=-1
         )
-        clf.fit(X_train, target)
+        clf.fit(X_train_full, target)
         lgb_heads.append(clf)
     models["LightGBM"] = tuple(lgb_heads)
 
@@ -286,14 +322,14 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
             iterations=150, learning_rate=0.05, depth=4,
             loss_function="MultiClass", thread_count=-1, random_seed=42, verbose=0
         )
-        clf.fit(X_train, target)
+        clf.fit(X_train_full, target)
         cb_heads.append(clf)
     models["CatBoost"] = tuple(cb_heads)
 
     lr_heads = []
     for target in (y_t, y_u, y_b):
         clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=600))
-        clf.fit(X_train, target)
+        clf.fit(X_train_full, target)
         lr_heads.append(clf)
     models["L2_Logistic"] = tuple(lr_heads)
 
@@ -306,7 +342,7 @@ def fit_ml_models(X_train: pd.DataFrame, y_num: np.ndarray):
             tp_heads = []
             for target in (y_t, y_u, y_b):
                 clf = TabPFNClassifier.create_default_for_version(ModelVersion.V3_5)
-                clf.fit(X_train, target)
+                clf.fit(X_train_lean, target)
                 tp_heads.append(clf)
             models["TabPFN_3.5"] = tuple(tp_heads)
         except Exception as exc:
@@ -323,15 +359,6 @@ def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
 
 
 def evaluate_model_draw(m_info: dict, actual: int) -> dict:
-    """
-    Unified Scoring:
-    - Equal Dual-Anchor: 1.0 pt if either Primary or Backup anchor hits; 1.5 pts if both hit.
-    - Cumulative Per-Pair Partial Credit (across all 3 pairs in top_pairs):
-        * 3.0 pts: Exact pair match
-        * 2.0 pts: Reverse pair match (non-double)
-        * 0.2 pts: Positional digit hit (Tens == Actual_Tens OR Units == Actual_Units)
-        * 0.1 pts: Any-position digit hit (digit appears in Actual, wrong slot)
-    """
     act_t, act_u = actual // 10, actual % 10
     act_str = f"{actual:02d}"
     rev_str = f"{act_u}{act_t}"
@@ -385,12 +412,40 @@ def evaluate_model_draw(m_info: dict, actual: int) -> dict:
     }
 
 
+def apply_weight_guardrails(raw_weights: dict[str, float], floor: float = 0.12, cap: float = 0.38) -> dict[str, float]:
+    """Clips committee weights to [floor, cap] and re-normalizes so they sum cleanly to 1.0."""
+    w = {m: float(v) for m, v in raw_weights.items()}
+    s = sum(w.values())
+    w = {m: v / s for m, v in w.items()}
+
+    for _ in range(10):
+        excess = 0.0
+        deficit = 0.0
+        free_keys = []
+        for m, val in w.items():
+            if val > cap:
+                excess += val - cap
+                w[m] = cap
+            elif val < floor:
+                deficit += floor - val
+                w[m] = floor
+            else:
+                free_keys.append(m)
+
+        net = excess - deficit
+        if abs(net) < 1e-9 or not free_keys:
+            break
+        free_sum = sum(w[m] for m in free_keys)
+        if free_sum <= 0:
+            break
+        for m in free_keys:
+            w[m] += net * (w[m] / free_sum)
+
+    final_s = sum(w.values())
+    return {m: round(w[m] / final_s, 4) for m in raw_weights}
+
+
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
-    """
-    Grades newly completed draws AND re-evaluates all existing history entries
-    using the unified Dual-Anchor + Cumulative Per-Pair rules so 5-Model Committee
-    Weights always stay 100% synchronized.
-    """
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
         int(r["Session_ID"]): r
@@ -434,10 +489,8 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         elif sid not in completed_map:
             still_upcoming.append(pred)
 
-    # Rebuild model_stats cleanly from all graded history entries so legacy entries
-    # also receive Equal Dual-Anchor + 0.1/0.2 partial pair credits
     rebuilt_stats = {m: default_model_stat() for m in MODEL_NAMES}
-    sorted_hist = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:150]
+    sorted_hist = sorted(existing_hist.values(), key=lambda x: x["session_id"], reverse=True)[:250]
 
     for item in sorted_hist:
         actual = int(item["actual"])
@@ -461,16 +514,13 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
 
     state["model_stats"] = rebuilt_stats
 
-    # Fast 6.0-draw Bayesian-shrunk committee weights driven by cumulative granular points
-    # Prior baseline ~0.55 pts/draw (34.4% dual anchor + occasional 0.1/0.2 pair partial hits)
     raw_weights = {}
     for m in MODEL_NAMES:
         st = state["model_stats"].get(m, default_model_stat())
-        avg_pts = (st["total_points"] + 6.0 * 0.55) / (st["evaluated"] + 6.0)
-        raw_weights[m] = avg_pts ** 2
+        avg_pts = (st["total_points"] + 8.0 * 0.55) / (st["evaluated"] + 8.0)
+        raw_weights[m] = avg_pts ** 1.5
 
-    total_w = sum(raw_weights.values())
-    state["model_weights"] = {m: round(raw_weights[m] / total_w, 4) for m in MODEL_NAMES}
+    state["model_weights"] = apply_weight_guardrails(raw_weights, floor=0.12, cap=0.38)
     state["history"] = sorted_hist
     state["upcoming"] = still_upcoming
     return state
@@ -478,24 +528,28 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
 
 def main():
     df = pd.read_csv(DRAWS_PATH)
-    df = ensure_future_slots(df, min_open_slots=8)
+    now_mmt = datetime.now(YANGON_TZ)
+    years_to_check = sorted(set(df["Year"].dropna().astype(int).tolist() + [now_mmt.year, now_mmt.year + 1]))
+    th_map = get_thai_holiday_map(years_to_check)
+
+    df = ensure_future_slots(df, th_map, min_open_slots=10)
     state = load_existing_predictions()
+    state["thai_holidays"] = th_map
     state = score_completed_sessions(df, state)
 
     hist = df[df["Winning_Number"].notna()].copy()
     hist["Winning_Number"] = hist["Winning_Number"].astype(int)
     state["drought_radar"] = compute_drought_radar(hist)
 
-    feat_df = build_features(df)
-    ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
-    feature_cols = [c for c in feat_df.columns if c not in ignore_cols]
-
+    feat_df, tree_cols, lean_cols = build_features(df)
     completed_feats = feat_df[(feat_df["Session_ID"] >= 15) & (feat_df["Winning_Number"].notna())]
     train_df = completed_feats.tail(ROLLING_WINDOW)
-    X_train = train_df[feature_cols]
+
+    X_train_full = train_df[tree_cols].fillna(train_df[tree_cols].mean())
+    X_train_lean = train_df[lean_cols].fillna(train_df[lean_cols].mean())
     y_train_num = train_df["Winning_Number"].astype(int).values
 
-    ml_models = fit_ml_models(X_train, y_train_num)
+    ml_models = fit_ml_models(X_train_full, X_train_lean, y_train_num)
     active_weights = {
         m: state["model_weights"].get(m, 0.20)
         for m in MODEL_NAMES
@@ -504,40 +558,30 @@ def main():
     w_sum = sum(active_weights.values())
     active_weights = {m: w / w_sum for m, w in active_weights.items()}
 
-    open_sids = df.loc[df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:8]
-    recent_hist_600 = hist.tail(ROLLING_WINDOW).copy()
-    lag_cols = [c for c in feature_cols if c.startswith("lag_")]
-    neutral_lag_means = X_train[lag_cols].mean()
-
-    first_open_mask = feat_df["Session_ID"] == open_sids[0]
-    confirmed_state_row = feat_df.loc[first_open_mask, feature_cols].iloc[0].copy()
-
+    # Autoregressive Sequential Chaining across the next 10 open trading slots
+    sim_df = df.copy()
+    open_sids = sim_df.loc[sim_df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:10]
     new_upcoming = []
+    chained_pairs_so_far = []
+
     for step_idx, sid in enumerate(open_sids):
-        is_immediate = step_idx == 0
-        row_mask = feat_df["Session_ID"] == sid
-        target_row = df.loc[row_mask].iloc[0]
+        step_feats, _, _ = build_features(sim_df)
+        row_mask = step_feats["Session_ID"] == sid
+        target_row = sim_df.loc[row_mask].iloc[0]
 
-        if is_immediate:
-            X_next = feat_df.loc[row_mask, feature_cols].fillna(X_train.mean())
-        else:
-            X_next = feat_df.loc[row_mask, feature_cols].copy()
-            for col in feature_cols:
-                if col not in {"Year", "Day_of_Year", "Is_PM", "DayOfWeek", "sin_doy", "cos_doy"}:
-                    X_next[col] = confirmed_state_row[col]
-            for lcol in lag_cols:
-                X_next[lcol] = neutral_lag_means[lcol]
+        X_next_full = step_feats.loc[row_mask, tree_cols].fillna(X_train_full.mean())
+        X_next_lean = step_feats.loc[row_mask, lean_cols].fillna(X_train_lean.mean())
 
+        sim_hist_600 = sim_df[sim_df["Winning_Number"].notna()].tail(ROLLING_WINDOW).copy()
         model_grids = {
-            "Bayesian_Markov": predict_bayesian_pure_transition(
-                recent_hist_600, target_row, is_immediate_next=is_immediate
-            )
+            "Bayesian_Markov": predict_bayesian_pure_transition(sim_hist_600, target_row)
         }
 
         for m_name, (clf_t, clf_u, clf_b) in ml_models.items():
-            pt = clf_t.predict_proba(X_next)[0]
-            pu = clf_u.predict_proba(X_next)[0]
-            pb = clf_b.predict_proba(X_next)[0]
+            X_in = X_next_lean if m_name == "TabPFN_3.5" else X_next_full
+            pt = clf_t.predict_proba(X_in)[0]
+            pu = clf_u.predict_proba(X_in)[0]
+            pb = clf_b.predict_proba(X_in)[0]
             model_grids[m_name] = combine_t_u_brake(pt, pu, pb)
 
         p_consensus = np.zeros(100)
@@ -584,6 +628,10 @@ def main():
             if len(anchor_filtered_pairs) >= 6:
                 break
 
+        top1_pair_str = anchor_filtered_pairs[0]["pair"]
+        # Feed #1 predicted pair into sim_df so the next draw in the chain uses it
+        sim_df.loc[row_mask, "Winning_Number"] = float(int(top1_pair_str))
+
         raw_date = str(target_row["Date"])
         new_upcoming.append({
             "session_id": sid,
@@ -592,7 +640,8 @@ def main():
             "day": format_day_short(raw_date),
             "day_full": format_day_name(raw_date),
             "session": "PM" if int(target_row["Is_PM"]) == 1 else "AM",
-            "forecast_mode": "LIVE_LAG" if is_immediate else "BASE_CALENDAR",
+            "forecast_mode": "LIVE_LAG" if step_idx == 0 else "CHAINED",
+            "chained_from": list(chained_pairs_so_far[-2:]),
             "primary_anchor": {
                 "digit": d1,
                 "prob": round(float(p_anchor_consensus[d1]), 4),
@@ -607,8 +656,8 @@ def main():
             "top_pairs": anchor_filtered_pairs,
             "models": model_breakdown,
         })
+        chained_pairs_so_far.append(top1_pair_str)
 
-    now_mmt = datetime.now(YANGON_TZ)
     state["upcoming"] = new_upcoming
     state["updated_at_iso"] = now_mmt.isoformat()
     state["updated_at"] = f"{now_mmt.day} {now_mmt.strftime('%b')} • {now_mmt.strftime('%I:%M %p').lstrip('0')} MMT"
@@ -616,7 +665,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions & 6-draw adaptive granular weights updated.")
+    print("[OK] SAI 2D chained 10-draw forecast, TabPFN lean features, Thai holidays & guarded weights updated.")
 
 
 if __name__ == "__main__":
