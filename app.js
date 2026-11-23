@@ -2,6 +2,29 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+// Built-in fallback Thailand / SET public holidays (merged automatically with predictions.json thai_holidays)
+const BUILTIN_THAI_HOLIDAYS = {
+  "1/1/2026": "New Year's Day",
+  "3/3/2026": "Makha Bucha Day",
+  "4/6/2026": "Chakri Memorial Day",
+  "4/13/2026": "Songkran Festival",
+  "4/14/2026": "Songkran Festival",
+  "4/15/2026": "Songkran Festival",
+  "5/1/2026": "National Labour Day",
+  "5/4/2026": "Coronation Day",
+  "6/1/2026": "Substitution for Visakha Bucha Day",
+  "6/3/2026": "H.M. Queen Suthida's Birthday",
+  "7/28/2026": "H.M. King Maha Vajiralongkorn's Birthday",
+  "7/29/2026": "Asarnha Bucha Day",
+  "8/12/2026": "H.M. Queen Sirikit The Queen Mother's Birthday",
+  "10/13/2026": "H.M. King Bhumibol Adulyadej Memorial Day",
+  "10/23/2026": "Chulalongkorn Day",
+  "12/7/2026": "Substitution for H.M. King Bhumibol's Birthday",
+  "12/10/2026": "Constitution Day",
+  "12/31/2026": "New Year's Eve",
+  "1/1/2027": "New Year's Day",
+};
+
 const STATE = {
   predictions: null,
   drawsCsvRaw: "",
@@ -10,6 +33,8 @@ const STATE = {
   activeFilter: "ALL",
   selectedYear: null,
   selectedMonth: null,
+  winLogWeeks: [],
+  winLogWeekIndex: 0,
 };
 
 const STORAGE_KEY = "sai2d_gh_config_v1";
@@ -24,6 +49,11 @@ function getConfig() {
 
 function saveConfig(cfg) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+}
+
+function getHolidayName(dateKey) {
+  const fromPred = STATE.predictions?.thai_holidays || {};
+  return fromPred[dateKey] || BUILTIN_THAI_HOLIDAYS[dateKey] || null;
 }
 
 function formatYangonTimestamp(predObj) {
@@ -77,6 +107,21 @@ function parseDateParts(dateStr) {
     dayFull: DAYS_FULL[dt.getDay()],
     dow: dt.getDay(),
   };
+}
+
+function getMondayKeyAndLabel(dateStr) {
+  const dt = parseDateParts(dateStr).dt;
+  const day = dt.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(dt);
+  mon.setDate(dt.getDate() + diffToMon);
+  const fri = new Date(mon);
+  fri.setDate(mon.getDate() + 4);
+
+  const key = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
+  const monLbl = `${mon.getDate()} ${MONTHS_SHORT[mon.getMonth()]}`;
+  const friLbl = `${fri.getDate()} ${MONTHS_SHORT[fri.getMonth()]} ${fri.getFullYear()}`;
+  return { key, label: `${monLbl} – ${friLbl}` };
 }
 
 function formatNum(val) {
@@ -151,6 +196,13 @@ async function fetchRepoData() {
       fetchLatestRepoFileText("data/draws.csv").catch(() => null),
     ]);
 
+    if (predText) {
+      STATE.predictions = JSON.parse(predText);
+      syncEl.textContent = formatYangonTimestamp(STATE.predictions);
+    } else {
+      syncEl.textContent = "Waiting for Action";
+    }
+
     if (csvText) {
       STATE.drawsCsvRaw = csvText;
       STATE.drawsRows = parseCsv(STATE.drawsCsvRaw);
@@ -160,12 +212,8 @@ async function fetchRepoData() {
       renderWinningHistory();
     }
 
-    if (predText) {
-      STATE.predictions = JSON.parse(predText);
-      syncEl.textContent = formatYangonTimestamp(STATE.predictions);
+    if (STATE.predictions) {
       renderPredictionViews();
-    } else {
-      syncEl.textContent = "Waiting for Action";
     }
   } catch (err) {
     syncEl.textContent = "Sync error";
@@ -176,7 +224,9 @@ async function fetchRepoData() {
 function populateSessionDropdown() {
   const select = document.getElementById("sessionSelect");
   select.innerHTML = "";
-  const openRows = STATE.drawsRows.filter((r) => !r.Winning_Number || r.Winning_Number === "NaN");
+  const openRows = STATE.drawsRows.filter(
+    (r) => (!r.Winning_Number || r.Winning_Number === "NaN") && !getHolidayName(r.Date)
+  );
   const completedRows = STATE.drawsRows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
 
   if (completedRows.length > 0) {
@@ -196,6 +246,21 @@ function populateSessionDropdown() {
 }
 
 function renderDayColumnHtml(d) {
+  const holName = getHolidayName(d.key);
+  if (holName && d.am === "—" && d.pm === "—") {
+    return `
+      <div class="compact-day-col is-holiday" title="Thai SET Holiday: ${holName}">
+        <div class="compact-day-head">
+          <span>${d.dayNum}</span>
+          <span>${d.dayShort}</span>
+        </div>
+        <div class="holiday-box">
+          <span class="holiday-tag">HOLIDAY</span>
+          <span class="holiday-sub">${holName}</span>
+        </div>
+      </div>`;
+  }
+
   return `
     <div class="compact-day-col">
       <div class="compact-day-head">
@@ -212,7 +277,9 @@ function renderCurrentWeek() {
   const labelEl = document.getElementById("weekRangeLabel");
   if (!STATE.drawsRows.length) return;
 
-  const firstOpen = STATE.drawsRows.find((r) => !r.Winning_Number || r.Winning_Number === "NaN");
+  const firstOpen = STATE.drawsRows.find(
+    (r) => (!r.Winning_Number || r.Winning_Number === "NaN") && !getHolidayName(r.Date)
+  );
   const anchorRow = firstOpen || STATE.drawsRows[STATE.drawsRows.length - 1];
   const anchorDate = parseDateParts(anchorRow.Date).dt;
 
@@ -318,8 +385,10 @@ function renderWinningHistory() {
       weeks.push(currentWeek);
     }
     currentWeek.endDay = day;
+    const key = `${STATE.selectedMonth + 1}/${day}/${STATE.selectedYear}`;
     const vals = lookup[day] || { am: "—", pm: "—" };
     currentWeek.days.push({
+      key,
       dayNum: `${day} ${MONTHS_SHORT[STATE.selectedMonth]}`,
       dayShort: DAYS_SHORT[dow],
       am: vals.am,
@@ -430,7 +499,7 @@ async function handleLogDraw(e) {
     );
 
     document.getElementById("winningInput").value = "";
-    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Models are updating (~45s). Tap ↻ once Action finishes.`;
+    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Chained predictions updating (~45s). Tap ↻ once Action finishes.`;
     STATE.drawsRows = rows;
     populateSessionDropdown();
     renderCurrentWeek();
@@ -442,11 +511,51 @@ async function handleLogDraw(e) {
   }
 }
 
+async function handleUndoLastDraw() {
+  const feedback = document.getElementById("loggerFeedback");
+  const undoBtn = document.getElementById("undoLastDrawBtn");
+  if (!confirm("Clear the most recently logged draw result in draws.csv?")) return;
+
+  undoBtn.disabled = true;
+  feedback.textContent = "Clearing last draw on GitHub...";
+
+  try {
+    const fileData = await githubGetFile("data/draws.csv");
+    const latestCsv = decodeBase64Unicode(fileData.content);
+    const rows = parseCsv(latestCsv);
+    const completed = rows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
+    if (!completed.length) throw new Error("No completed draws found to undo.");
+
+    const lastRow = completed[completed.length - 1];
+    const p = parseDateParts(lastRow.Date);
+    const sessLabel = lastRow.Is_PM === "1" ? "PM" : "AM";
+    const oldVal = formatNum(lastRow.Winning_Number);
+    lastRow.Winning_Number = "";
+
+    await githubPutFile(
+      "data/draws.csv",
+      toCsv(rows),
+      fileData.sha,
+      `fix(draw): undo ${p.shortDate} (${p.dayShort}) ${sessLabel} (${oldVal})`
+    );
+
+    feedback.textContent = `Cleared ${p.shortDate} ${sessLabel} (${oldVal}). Models re-syncing (~45s).`;
+    STATE.drawsRows = rows;
+    populateSessionDropdown();
+    renderCurrentWeek();
+    renderWinningHistory();
+  } catch (err) {
+    feedback.textContent = `Undo error: ${err.message}`;
+  } finally {
+    undoBtn.disabled = false;
+  }
+}
+
 function renderRadar() {
   const grid = document.getElementById("radarGrid");
   const radar = STATE.predictions?.drought_radar?.[STATE.activeRadar];
   if (!radar) {
-    grid.innerHTML = `<p class="muted">No radar data loaded yet.</p>`;
+    grid.innerHTML = `<span class="muted">No radar data</span>`;
     return;
   }
   const thresholdHigh = STATE.activeRadar === "any_pos_gaps" ? 9 : 22;
@@ -456,9 +565,8 @@ function renderRadar() {
     .map(([digit, gap]) => {
       const cls = gap >= thresholdHigh ? "hot-alert" : gap >= thresholdMid ? "warm-alert" : "";
       return `
-        <div class="radar-cell ${cls}">
-          <div class="radar-digit">${digit}</div>
-          <div class="radar-gap">${gap}d</div>
+        <div class="radar-chip ${cls}" title="Digit ${digit}: ${gap} draws since last appearance">
+          <b>${digit}</b><span>${gap}d</span>
         </div>`;
     })
     .join("");
@@ -479,14 +587,16 @@ function renderUpcoming() {
       const dayFull = item.day_full || p.dayFull;
       const p1 = item.primary_anchor;
       const p2 = item.secondary_anchor;
+
+      const chainTrail = (item.chained_from || []).join(" → ");
       const modeTag = idx === 0
         ? `<span class="chip" style="margin-left:6px;font-size:10px">Next Live Draw</span>`
-        : `<span class="muted small" style="margin-left:6px">Base Forecast</span>`;
+        : `<span class="chain-pill" title="Calculated sequentially from prior predicted top pairs">Chained${chainTrail ? ` (${chainTrail})` : ""}</span>`;
 
       const pairsHtml = (item.top_pairs || [])
         .map(
-          (pairObj) => `
-          <div class="pair-badge" title="Supporters: ${(pairObj.supporters || []).join(", ")}">
+          (pairObj, pIdx) => `
+          <div class="pair-badge ${pIdx === 0 ? "top1-pair" : ""}" title="Supporters: ${(pairObj.supporters || []).join(", ")}">
             ${pairObj.pair} <span>(${(pairObj.prob * 100).toFixed(2)}%)</span>
           </div>`
         )
@@ -497,7 +607,7 @@ function renderUpcoming() {
           ([mName, m]) => `
           <div class="model-mini-row">
             <strong>${mName.replace("_", " ")}</strong>
-            <span>Anchor: <b>${m.anchor_digit}</b> (Backup: ${m.backup_digit ?? "—"}) • Pairs: ${m.top_pairs.join(", ")}</span>
+            <span>Anchor: <b>${m.anchor_digit}</b> / <b>${m.backup_digit ?? "—"}</b> • Pairs: ${m.top_pairs.join(", ")}</span>
           </div>`
         )
         .join("");
@@ -505,7 +615,7 @@ function renderUpcoming() {
       return `
         <article class="pred-card">
           <div class="card-header" style="margin-bottom:0">
-            <div>
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
               <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
               ${modeTag}
             </div>
@@ -542,7 +652,6 @@ function renderUpcoming() {
 }
 
 function computeClientModelScore(m, actStr) {
-  // Uses backend-stored earned_pts if available, or computes identical rules on the fly for older logs
   if (typeof m.earned_pts === "number") {
     const d = m.score_detail || {};
     return {
@@ -586,7 +695,7 @@ function computeClientModelScore(m, actStr) {
     } else if (pStr === revStr && actStr !== revStr) {
       pairPts += 2.0;
       hitRev = true;
-    } else if (pt === actT || pu === actU) {
+    } else if (pt == actT || pu == actU) {
       pairPts += 0.2;
       hitPos = true;
     } else if (actDigits.has(pt) || actDigits.has(pu)) {
@@ -605,11 +714,29 @@ function computeClientModelScore(m, actStr) {
   };
 }
 
+function groupWinLogByWeeks(hist) {
+  const weekMap = new Map();
+  hist.forEach((item) => {
+    const { key, label } = getMondayKeyAndLabel(item.date);
+    if (!weekMap.has(key)) {
+      weekMap.set(key, { key, label, items: [] });
+    }
+    weekMap.get(key).items.push(item);
+  });
+  return Array.from(weekMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+}
+
 function renderWinLog() {
   const hist = STATE.predictions?.history || [];
   const strip = document.getElementById("scoreSummaryStrip");
+  const weekScoreEl = document.getElementById("winLogWeekScoreStrip");
   const listEl = document.getElementById("historyList");
+  const weekTitleEl = document.getElementById("winLogWeekTitle");
+  const weekSubEl = document.getElementById("winLogWeekSub");
+  const prevBtn = document.getElementById("prevWinWeekBtn");
+  const nextBtn = document.getElementById("nextWinWeekBtn");
 
+  // 1. All-Time Summary Strip
   const total = hist.length;
   const exact = hist.filter((h) => h.outcome === "EXACT").length;
   const rev = hist.filter((h) => h.outcome === "REVERSE").length;
@@ -617,15 +744,51 @@ function renderWinLog() {
   const anyWin = exact + rev + anchor;
 
   strip.innerHTML = `
-    <div class="stat-box"><div class="muted small">Evaluated</div><div class="num">${total}</div></div>
-    <div class="stat-box"><div class="muted small">Total Wins</div><div class="num">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
+    <div class="stat-box"><div class="muted small">All-Time Evaluated</div><div class="num">${total}</div></div>
+    <div class="stat-box"><div class="muted small">All-Time Wins</div><div class="num" style="color:#34d399">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
     <div class="stat-box"><div class="muted small">Exact + Reverse</div><div class="num" style="color:#fbbf24">${exact + rev}</div></div>
     <div class="stat-box"><div class="muted small">Anchor Hits</div><div class="num" style="color:#38bdf8">${anchor}</div></div>
   `;
 
-  const filtered = STATE.activeFilter === "ALL" ? hist : hist.filter((h) => h.outcome === STATE.activeFilter);
+  // 2. Week-by-Week Grouping
+  STATE.winLogWeeks = groupWinLogByWeeks(hist);
+  if (!STATE.winLogWeeks.length) {
+    weekTitleEl.textContent = "No Evaluated Weeks Yet";
+    weekSubEl.textContent = "";
+    weekScoreEl.innerHTML = "";
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    listEl.innerHTML = `<p class="muted">Every forecast is automatically graded here once its result is logged.</p>`;
+    return;
+  }
+
+  if (STATE.winLogWeekIndex >= STATE.winLogWeeks.length) STATE.winLogWeekIndex = 0;
+  if (STATE.winLogWeekIndex < 0) STATE.winLogWeekIndex = 0;
+
+  const currentWeek = STATE.winLogWeeks[STATE.winLogWeekIndex];
+  weekTitleEl.textContent = `Week of ${currentWeek.label}`;
+  weekSubEl.textContent = `Week ${STATE.winLogWeeks.length - STATE.winLogWeekIndex} of ${STATE.winLogWeeks.length}`;
+  prevBtn.disabled = STATE.winLogWeekIndex >= STATE.winLogWeeks.length - 1;
+  nextBtn.disabled = STATE.winLogWeekIndex <= 0;
+
+  // Weekly Scorecard
+  const wkItems = currentWeek.items;
+  const wkTotal = wkItems.length;
+  const wkExact = wkItems.filter((h) => h.outcome === "EXACT").length;
+  const wkRev = wkItems.filter((h) => h.outcome === "REVERSE").length;
+  const wkAnchor = wkItems.filter((h) => h.outcome === "ANCHOR_HIT").length;
+  const wkWins = wkExact + wkRev + wkAnchor;
+
+  weekScoreEl.innerHTML = `
+    <div class="wk-pill"><span>This Week Draws</span><b>${wkTotal}</b></div>
+    <div class="wk-pill"><span>Weekly Wins</span><b style="color:#34d399">${wkWins}/${wkTotal} (${wkTotal ? ((wkWins / wkTotal) * 100).toFixed(1) : 0}%)</b></div>
+    <div class="wk-pill"><span>Exact / Rev</span><b style="color:#fbbf24">${wkExact} / ${wkRev}</b></div>
+    <div class="wk-pill"><span>Anchor Hits</span><b style="color:#38bdf8">${wkAnchor}</b></div>
+  `;
+
+  const filtered = STATE.activeFilter === "ALL" ? wkItems : wkItems.filter((h) => h.outcome === STATE.activeFilter);
   if (!filtered.length) {
-    listEl.innerHTML = `<p class="muted">No graded predictions in this filter yet. Every forecast is automatically graded here once its result is logged.</p>`;
+    listEl.innerHTML = `<p class="muted">No draws match this filter in ${currentWeek.label}.</p>`;
     return;
   }
 
@@ -722,7 +885,7 @@ function renderModels() {
         <div class="model-stat-card">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <strong>${mName.replace("_", " ")}</strong>
-            <span class="chip">${(w * 100).toFixed(1)}% wt</span>
+            <span class="violet-chip">${(w * 100).toFixed(1)}% wt</span>
           </div>
           <div class="muted small" style="margin-top:7px">
             Score: <b>${totPts.toFixed(1)} pts</b> (Avg: <b>${avgPts}</b>/draw)<br/>
@@ -749,7 +912,21 @@ document.addEventListener("DOMContentLoaded", () => {
   if (cfg.token) document.getElementById("ghToken").value = cfg.token;
 
   document.getElementById("logDrawForm").addEventListener("submit", handleLogDraw);
+  document.getElementById("undoLastDrawBtn").addEventListener("click", handleUndoLastDraw);
   document.getElementById("refreshBtn").addEventListener("click", fetchRepoData);
+
+  document.getElementById("prevWinWeekBtn").addEventListener("click", () => {
+    if (STATE.winLogWeekIndex < STATE.winLogWeeks.length - 1) {
+      STATE.winLogWeekIndex += 1;
+      renderWinLog();
+    }
+  });
+  document.getElementById("nextWinWeekBtn").addEventListener("click", () => {
+    if (STATE.winLogWeekIndex > 0) {
+      STATE.winLogWeekIndex -= 1;
+      renderWinLog();
+    }
+  });
 
   document.getElementById("historyYearSelect").addEventListener("change", (e) => {
     STATE.selectedYear = parseInt(e.target.value, 10);
