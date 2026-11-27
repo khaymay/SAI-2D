@@ -253,10 +253,13 @@ function renderUpcoming() {
   });
 }
 
-/* 4. Full Winning History Tab */
+/* 4. Monthly Calendar History Tab (Days 1–31, Split AM/PM, Holidays Marked) */
 function renderHistory() {
-  const completed = drawsData.filter((r) => r.Winning_Number !== "").slice().reverse();
-  const years = [...new Set(completed.map((r) => r.Year))];
+  const completed = drawsData.filter((r) => r.Winning_Number !== "");
+  const latestRow = completed.length ? completed[completed.length - 1] : drawsData[0];
+  const latestDate = parseDateMDY(latestRow.Date);
+
+  const years = [...new Set(drawsData.map((r) => r.Year))].sort((a, b) => Number(b) - Number(a));
   const yearSel = document.getElementById("historyYearSelect");
   const monthSel = document.getElementById("historyMonthSelect");
 
@@ -267,43 +270,122 @@ function renderHistory() {
       opt.textContent = y;
       yearSel.appendChild(opt);
     });
-    const months = ["All Months", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    yearSel.value = String(latestDate.getFullYear());
+
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
     months.forEach((m, idx) => {
       const opt = document.createElement("option");
-      opt.value = idx;
+      opt.value = String(idx + 1);
       opt.textContent = m;
       monthSel.appendChild(opt);
     });
+    monthSel.value = String(latestDate.getMonth() + 1);
   }
 
-  const selYear = yearSel.value || years[0];
-  const selMonth = parseInt(monthSel.value || "0", 10);
+  const selYear = parseInt(yearSel.value, 10);
+  const selMonth = parseInt(monthSel.value, 10); // 1..12
+  const holidaysMap = predData.thai_holidays || {};
 
-  const filtered = completed.filter((r) => {
-    if (r.Year !== selYear) return false;
-    if (selMonth > 0) {
-      const m = parseInt(r.Date.split("/")[0], 10);
-      if (m !== selMonth) return false;
+  // Index draws for selected month by day-of-month
+  const dayDrawMap = {};
+  drawsData.forEach((r) => {
+    const [m, d, y] = r.Date.split("/").map(Number);
+    if (y === selYear && m === selMonth) {
+      if (!dayDrawMap[d]) dayDrawMap[d] = {};
+      dayDrawMap[d][r.Is_PM === "1" ? "PM" : "AM"] = r.Winning_Number;
     }
-    return true;
   });
 
-  const list = document.getElementById("historyList");
-  list.innerHTML = filtered
-    .slice(0, 120)
-    .map((r) => {
-      const dt = parseDateMDY(r.Date);
-      const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
-      const sess = r.Is_PM === "1" ? "PM" : "AM";
-      const numStr = String(parseInt(r.Winning_Number, 10)).padStart(2, "0");
-      return `
-        <div class="history-row">
-          <span><strong>${formatShortDate(dt)} ${r.Year}</strong> (${dayName}) • ${sess}</span>
-          <span class="slot-num">${numStr}</span>
+  const firstWeekday = new Date(selYear, selMonth - 1, 1).getDay(); // 0=Sun..6=Sat
+  const daysInMonth = new Date(selYear, selMonth, 0).getDate();
+  const monthHolidays = [];
+
+  let html = `
+    <div class="cal-weekdays">
+      <div class="wknd">Sun</div>
+      <div>Mon</div>
+      <div>Tue</div>
+      <div>Wed</div>
+      <div>Thu</div>
+      <div>Fri</div>
+      <div class="wknd">Sat</div>
+    </div>
+    <div class="cal-grid">
+  `;
+
+  // Leading empty cells before the 1st of the month
+  for (let i = 0; i < firstWeekday; i++) {
+    html += `<div class="cal-cell empty"></div>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dt = new Date(selYear, selMonth - 1, day);
+    const dow = dt.getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const mdy = `${selMonth}/${day}/${selYear}`;
+    const holName = holidaysMap[mdy];
+    const slots = dayDrawMap[day] || {};
+
+    if (holName) {
+      monthHolidays.push({ day, name: holName });
+    }
+
+    if (isWeekend) {
+      html += `
+        <div class="cal-cell weekend">
+          <div class="cal-day-num">${day}</div>
+          <div class="cal-wknd-lbl">Closed</div>
         </div>
       `;
-    })
-    .join("");
+    } else if (holName) {
+      html += `
+        <div class="cal-cell holiday-day" title="${holName}">
+          <div class="cal-day-num">${day}</div>
+          <div class="cal-hol-badge">HOL</div>
+        </div>
+      `;
+    } else {
+      const amVal =
+        slots.AM !== undefined && slots.AM !== ""
+          ? String(parseInt(slots.AM, 10)).padStart(2, "0")
+          : "--";
+      const pmVal =
+        slots.PM !== undefined && slots.PM !== ""
+          ? String(parseInt(slots.PM, 10)).padStart(2, "0")
+          : "--";
+
+      html += `
+        <div class="cal-cell">
+          <div class="cal-day-num">${day}</div>
+          <div class="cal-split">
+            <div class="cal-slot">
+              <span class="cal-slot-lbl">AM</span>
+              <span class="cal-slot-val ${amVal === "--" ? "open" : ""}">${amVal}</span>
+            </div>
+            <div class="cal-slot">
+              <span class="cal-slot-lbl">PM</span>
+              <span class="cal-slot-val ${pmVal === "--" ? "open" : ""}">${pmVal}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  html += `</div>`;
+
+  if (monthHolidays.length) {
+    html += `
+      <div class="cal-holiday-legend">
+        ${monthHolidays.map((h) => `<span class="cal-hol-tag">${h.day} ${monthSel.options[monthSel.selectedIndex].text.slice(0, 3)}: ${h.name}</span>`).join("")}
+      </div>
+    `;
+  }
+
+  document.getElementById("historyList").innerHTML = html;
 }
 
 /* 5. Win Log Tab with Weekly Pager, Color-Dotted Filter Chips & Actual Prob Lookup */
@@ -589,7 +671,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderWinLog();
   });
 
-  // History Filters
+  // History Calendar Filters
   document.getElementById("historyYearSelect").addEventListener("change", renderHistory);
   document.getElementById("historyMonthSelect").addEventListener("change", renderHistory);
 
