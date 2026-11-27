@@ -772,13 +772,14 @@ body {
   color: var(--muted);
 }
 
-/* History & Weights */
+/* History Monthly Calendar Grid (1-31 Split AM/PM + Holidays) */
 .history-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
 .history-filters {
@@ -786,25 +787,131 @@ body {
   gap: 6px;
 }
 
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 420px;
-  overflow-y: auto;
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 5px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
 }
 
-.history-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.cal-weekdays .wknd {
+  color: #64748b;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-cell {
   background: var(--card-inner);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 12px;
+  padding: 4px 3px;
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
+.cal-cell.empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+.cal-cell.weekend {
+  background: #0b101d;
+  border-color: rgba(30, 41, 59, 0.55);
+  opacity: 0.65;
+}
+
+.cal-cell.holiday-day {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.cal-day-num {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+  text-align: right;
+  padding-right: 2px;
+}
+
+.cal-split {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.cal-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0b111e;
+  border-radius: 4px;
+  padding: 2px 3px;
+  font-size: 10px;
+}
+
+.cal-slot-lbl {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.cal-slot-val {
+  font-weight: 800;
+  color: var(--emerald);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-slot-val.open {
+  color: #475569;
+}
+
+.cal-hol-badge {
+  background: var(--gold-soft);
+  color: #fbbf24;
+  border-radius: 4px;
+  padding: 4px 2px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.cal-wknd-lbl {
+  text-align: center;
+  font-size: 9px;
+  color: #475569;
+  margin: auto 0;
+}
+
+.cal-holiday-legend {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.cal-hol-tag {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+/* Weights */
 .weights-stack {
   display: flex;
   flex-direction: column;
