@@ -1,14 +1,14 @@
-const REPO_OWNER = "saihtet2012";
+const REPO_OWNER = "khaymay";
 const REPO_NAME = "SAI-2D";
 const BRANCH = "main";
 const WORKFLOW_FILE = "update.yml";
 
 const MODEL_LABELS = {
-  TabPFN_3.5: "TabPFN 3.5",
-  LightGBM: "LightGBM",
-  CatBoost: "CatBoost",
-  L2_Logistic: "L2 Logistic",
-  Bayesian_Markov: "Bayesian Markov",
+  "TabPFN_3.5": "TabPFN 3.5",
+  "LightGBM": "LightGBM",
+  "CatBoost": "CatBoost",
+  "L2_Logistic": "L2 Logistic",
+  "Bayesian_Markov": "Bayesian Markov",
 };
 
 let drawsData = [];
