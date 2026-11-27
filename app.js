@@ -1,983 +1,642 @@
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const REPO_OWNER = "saihtet2012";
+const REPO_NAME = "SAI-2D";
+const BRANCH = "main";
+const WORKFLOW_FILE = "update.yml";
 
-// Built-in fallback Thailand / SET public holidays (merged automatically with predictions.json thai_holidays)
-const BUILTIN_THAI_HOLIDAYS = {
-  "1/1/2026": "New Year's Day",
-  "3/3/2026": "Makha Bucha Day",
-  "4/6/2026": "Chakri Memorial Day",
-  "4/13/2026": "Songkran Festival",
-  "4/14/2026": "Songkran Festival",
-  "4/15/2026": "Songkran Festival",
-  "5/1/2026": "National Labour Day",
-  "5/4/2026": "Coronation Day",
-  "6/1/2026": "Substitution for Visakha Bucha Day",
-  "6/3/2026": "H.M. Queen Suthida's Birthday",
-  "7/28/2026": "H.M. King Maha Vajiralongkorn's Birthday",
-  "7/29/2026": "Asarnha Bucha Day",
-  "8/12/2026": "H.M. Queen Sirikit The Queen Mother's Birthday",
-  "10/13/2026": "H.M. King Bhumibol Adulyadej Memorial Day",
-  "10/23/2026": "Chulalongkorn Day",
-  "12/7/2026": "Substitution for H.M. King Bhumibol's Birthday",
-  "12/10/2026": "Constitution Day",
-  "12/31/2026": "New Year's Eve",
-  "1/1/2027": "New Year's Day",
+const MODEL_LABELS = {
+  TabPFN_3.5: "TabPFN 3.5",
+  LightGBM: "LightGBM",
+  CatBoost: "CatBoost",
+  L2_Logistic: "L2 Logistic",
+  Bayesian_Markov: "Bayesian Markov",
 };
 
-const STATE = {
-  predictions: null,
-  drawsCsvRaw: "",
-  drawsRows: [],
-  activeRadar: "any_pos_gaps",
-  activeFilter: "ALL",
-  selectedYear: null,
-  selectedMonth: null,
-  winLogWeeks: [],
-  winLogWeekIndex: 0,
-};
+let drawsData = [];
+let predData = null;
+let droughtMode = "any_pos_gaps";
+let topWeekOffset = 0; // 0 = This Week, 1 = Last Week
+let winlogWeekIdx = 0;
+let winlogOutcomeFilter = "ALL";
 
-const STORAGE_KEY = "sai2d_gh_config_v1";
-
-function getConfig() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  } catch {
-    return {};
-  }
+function getPat() {
+  return localStorage.getItem("sai2d_gh_pat") || "";
 }
 
-function saveConfig(cfg) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+function parseDateMDY(str) {
+  const [m, d, y] = str.split("/").map(Number);
+  return new Date(y, m - 1, d);
 }
 
-function getHolidayName(dateKey) {
-  const fromPred = STATE.predictions?.thai_holidays || {};
-  return fromPred[dateKey] || BUILTIN_THAI_HOLIDAYS[dateKey] || null;
+function formatShortDate(dt) {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${dt.getDate()} ${months[dt.getMonth()]}`;
 }
 
-function formatYangonTimestamp(predObj) {
-  if (!predObj) return "Ready (MMT)";
-  const raw = predObj.updated_at_iso || predObj.updated_at;
-  if (!raw) return "Ready (MMT)";
-
-  let dt = new Date(raw);
-
-  if (Number.isNaN(dt.getTime())) {
-    const match = String(raw).match(/(\d{1,2})\s+([A-Za-z]{3})\s+•\s+(\d{1,2}):(\d{2})\s*UTC/i);
-    if (match) {
-      const day = parseInt(match[1], 10);
-      const monIdx = MONTHS_SHORT.findIndex((m) => m.toLowerCase() === match[2].toLowerCase());
-      const hr = parseInt(match[3], 10);
-      const min = parseInt(match[4], 10);
-      if (monIdx >= 0) {
-        dt = new Date(Date.UTC(new Date().getFullYear(), monIdx, day, hr, min));
-      }
-    }
-  }
-
-  if (Number.isNaN(dt.getTime())) {
-    return String(raw);
-  }
-
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Yangon",
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(dt);
-
-  const get = (type) => (parts.find((p) => p.type === type) || {}).value || "";
-  const dayPeriod = get("dayPeriod").toUpperCase();
-  return `${get("day")} ${get("month")} • ${get("hour")}:${get("minute")} ${dayPeriod} MMT`;
+function getMondayOfWeek(dt) {
+  const copy = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const day = copy.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  copy.setDate(copy.getDate() + diff);
+  return copy;
 }
 
-function parseDateParts(dateStr) {
-  const [m, d, y] = dateStr.split("/").map((x) => parseInt(x, 10));
-  const dt = new Date(y, m - 1, d);
-  return {
-    dt,
-    year: y,
-    monthIndex: m - 1,
-    day: d,
-    shortDate: `${d} ${MONTHS_SHORT[m - 1]}`,
-    dayShort: DAYS_SHORT[dt.getDay()],
-    dayFull: DAYS_FULL[dt.getDay()],
-    dow: dt.getDay(),
-  };
-}
-
-function getMondayKeyAndLabel(dateStr) {
-  const dt = parseDateParts(dateStr).dt;
-  const day = dt.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const mon = new Date(dt);
-  mon.setDate(dt.getDate() + diffToMon);
-  const fri = new Date(mon);
-  fri.setDate(mon.getDate() + 4);
-
-  const key = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
-  const monLbl = `${mon.getDate()} ${MONTHS_SHORT[mon.getMonth()]}`;
-  const friLbl = `${fri.getDate()} ${MONTHS_SHORT[fri.getMonth()]} ${fri.getFullYear()}`;
-  return { key, label: `${monLbl} – ${friLbl}` };
-}
-
-function formatNum(val) {
-  if (val === null || val === undefined || val === "" || val === "NaN") return "—";
-  const n = parseInt(val, 10);
-  return Number.isNaN(n) ? "—" : String(n).padStart(2, "0");
-}
-
-function parseCsv(text) {
+function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   const headers = lines[0].split(",");
   return lines.slice(1).map((line) => {
-    const vals = line.split(",");
+    const cols = line.split(",");
     const obj = {};
-    headers.forEach((h, i) => (obj[h.trim()] = (vals[i] || "").trim()));
+    headers.forEach((h, i) => {
+      obj[h.trim()] = (cols[i] || "").trim();
+    });
     return obj;
   });
 }
 
-function toCsv(rows) {
+function toCSV(rows) {
   const headers = ["Session_ID", "Year", "Day_of_Year", "Date", "Is_PM", "Winning_Number"];
-  const body = rows.map((r) => headers.map((h) => r[h] ?? "").join(","));
-  return [headers.join(","), ...body].join("\n") + "\n";
-}
-
-function encodeBase64Unicode(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
-
-function decodeBase64Unicode(b64) {
-  return decodeURIComponent(escape(atob(b64.replace(/\n/g, ""))));
-}
-
-async function fetchLatestRepoFileText(path) {
-  const cfg = getConfig();
-  const cacheBust = `?t=${Date.now()}`;
-
-  if (cfg.owner && cfg.repo && cfg.token) {
-    try {
-      const branch = cfg.branch || "main";
-      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}&_=${Date.now()}`;
-      const apiRes = await fetch(apiUrl, {
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${cfg.token}`,
-          Accept: "application/vnd.github+json",
-        },
-      });
-      if (apiRes.ok) {
-        const json = await apiRes.json();
-        if (json && json.content) {
-          return decodeBase64Unicode(json.content);
-        }
-      }
-    } catch (e) {
-      console.warn("Direct GitHub API fetch fallback to Pages:", e);
-    }
-  }
-
-  const res = await fetch(`${path}${cacheBust}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
-  return res.text();
-}
-
-async function fetchRepoData() {
-  const syncEl = document.getElementById("syncStatus");
-  syncEl.textContent = "Syncing...";
-
-  try {
-    const [predText, csvText] = await Promise.all([
-      fetchLatestRepoFileText("data/predictions.json").catch(() => null),
-      fetchLatestRepoFileText("data/draws.csv").catch(() => null),
-    ]);
-
-    if (predText) {
-      STATE.predictions = JSON.parse(predText);
-      syncEl.textContent = formatYangonTimestamp(STATE.predictions);
-    } else {
-      syncEl.textContent = "Waiting for Action";
-    }
-
-    if (csvText) {
-      STATE.drawsCsvRaw = csvText;
-      STATE.drawsRows = parseCsv(STATE.drawsCsvRaw);
-      initHistorySelectors();
-      populateSessionDropdown();
-      renderCurrentWeek();
-      renderWinningHistory();
-    }
-
-    if (STATE.predictions) {
-      renderPredictionViews();
-    }
-  } catch (err) {
-    syncEl.textContent = "Sync error";
-    console.error(err);
-  }
-}
-
-function populateSessionDropdown() {
-  const select = document.getElementById("sessionSelect");
-  select.innerHTML = "";
-  const openRows = STATE.drawsRows.filter(
-    (r) => (!r.Winning_Number || r.Winning_Number === "NaN") && !getHolidayName(r.Date)
-  );
-  const completedRows = STATE.drawsRows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
-
-  if (completedRows.length > 0) {
-    const last = completedRows[completedRows.length - 1];
-    const p = parseDateParts(last.Date);
-    document.getElementById("latestBadge").textContent =
-      `Latest: ${p.shortDate} (${p.dayShort}) ${last.Is_PM === "1" ? "PM" : "AM"} = ${formatNum(last.Winning_Number)}`;
-  }
-
-  openRows.slice(0, 10).forEach((r) => {
-    const p = parseDateParts(r.Date);
-    const opt = document.createElement("option");
-    opt.value = r.Session_ID;
-    opt.textContent = `${p.shortDate} (${p.dayFull}) — ${r.Is_PM === "1" ? "PM (4:30)" : "AM (12:01)"}`;
-    select.appendChild(opt);
+  const lines = [headers.join(",")];
+  rows.forEach((r) => {
+    lines.push(headers.map((h) => (r[h] === undefined || r[h] === null ? "" : r[h])).join(","));
   });
+  return lines.join("\n") + "\n";
 }
 
-function renderDayColumnHtml(d) {
-  const holName = getHolidayName(d.key);
-  if (holName && d.am === "—" && d.pm === "—") {
-    return `
-      <div class="compact-day-col is-holiday" title="Thai SET Holiday: ${holName}">
-        <div class="compact-day-head">
-          <span>${d.dayNum}</span>
-          <span>${d.dayShort}</span>
-        </div>
-        <div class="holiday-box">
-          <span class="holiday-tag">HOLIDAY</span>
-          <span class="holiday-sub">${holName}</span>
-        </div>
-      </div>`;
-  }
-
-  return `
-    <div class="compact-day-col">
-      <div class="compact-day-head">
-        <span>${d.dayNum}</span>
-        <span>${d.dayShort}</span>
-      </div>
-      <div class="slot-box am-slot ${d.am === "—" ? "is-empty" : ""}">${d.am}</div>
-      <div class="slot-box pm-slot ${d.pm === "—" ? "is-empty" : ""}">${d.pm}</div>
-    </div>`;
+async function fetchData() {
+  const ts = Date.now();
+  const [csvRes, jsonRes] = await Promise.all([
+    fetch(`data/draws.csv?v=${ts}`),
+    fetch(`data/predictions.json?v=${ts}`),
+  ]);
+  const csvText = await csvRes.text();
+  drawsData = parseCSV(csvText);
+  predData = await jsonRes.json();
+  renderAll();
 }
 
-function renderCurrentWeek() {
-  const grid = document.getElementById("currentWeekGrid");
-  const labelEl = document.getElementById("weekRangeLabel");
-  if (!STATE.drawsRows.length) return;
+function renderAll() {
+  if (!predData) return;
+  document.getElementById("lastUpdatedPill").textContent = predData.updated_at || "Ready";
+  renderWeekStrip();
+  renderDroughtRadar();
+  renderUpcoming();
+  renderHistory();
+  renderWinLog();
+  renderWeights();
+  populateLoggerSlots();
+}
 
-  const firstOpen = STATE.drawsRows.find(
-    (r) => (!r.Winning_Number || r.Winning_Number === "NaN") && !getHolidayName(r.Date)
-  );
-  const anchorRow = firstOpen || STATE.drawsRows[STATE.drawsRows.length - 1];
-  const anchorDate = parseDateParts(anchorRow.Date).dt;
+/* 1. Slideable This Week / Last Week Winning Numbers Strip */
+function renderWeekStrip() {
+  const completed = drawsData.filter((r) => r.Winning_Number !== "");
+  const referenceRow = completed.length ? completed[completed.length - 1] : drawsData[0];
+  const refDate = parseDateMDY(referenceRow.Date);
+  const thisMonday = getMondayOfWeek(refDate);
 
-  const day = anchorDate.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const monday = new Date(anchorDate);
-  monday.setDate(anchorDate.getDate() + diffToMon);
+  const targetMonday = new Date(thisMonday);
+  targetMonday.setDate(thisMonday.getDate() - topWeekOffset * 7);
+  const targetFriday = new Date(targetMonday);
+  targetFriday.setDate(targetMonday.getDate() + 4);
 
-  const weekDates = [];
+  document.getElementById("weekStripTitle").textContent =
+    topWeekOffset === 0 ? "Winning Numbers • This Week" : "Winning Numbers • Last Week";
+  document.getElementById("weekStripRange").textContent =
+    `${formatShortDate(targetMonday)} – ${formatShortDate(targetFriday)} ${targetFriday.getFullYear()} (Swipe or toggle)`;
+
+  document.getElementById("btnThisWeek").classList.toggle("active", topWeekOffset === 0);
+  document.getElementById("btnLastWeek").classList.toggle("active", topWeekOffset === 1);
+
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const holidaysMap = predData.thai_holidays || {};
+  const grid = document.getElementById("weekStripGrid");
+  grid.innerHTML = "";
+
   for (let i = 0; i < 5; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const key = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-    weekDates.push({
-      key,
-      dayNum: `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`,
-      dayShort: DAYS_SHORT[d.getDay()],
-      am: "—",
-      pm: "—",
+    const d = new Date(targetMonday);
+    d.setDate(targetMonday.getDate() + i);
+    const mdy = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+    const holName = holidaysMap[mdy];
+    const dayRows = drawsData.filter((r) => r.Date === mdy);
+
+    const amRow = dayRows.find((r) => r.Is_PM === "0");
+    const pmRow = dayRows.find((r) => r.Is_PM === "1");
+
+    const renderSlot = (label, row) => {
+      if (holName) {
+        return `<div class="slot-chip holiday"><div class="slot-session">${label}</div><div class="slot-num holiday-txt">HOL</div></div>`;
+      }
+      if (!row || row.Winning_Number === "") {
+        return `<div class="slot-chip"><div class="slot-session">${label}</div><div class="slot-num pending">--</div></div>`;
+      }
+      const numStr = String(parseInt(row.Winning_Number, 10)).padStart(2, "0");
+      return `<div class="slot-chip"><div class="slot-session">${label}</div><div class="slot-num">${numStr}</div></div>`;
+    };
+
+    const col = document.createElement("div");
+    col.className = "day-col";
+    col.innerHTML = `
+      <div class="day-col-head">${dayNames[i]}</div>
+      <div class="day-col-date">${formatShortDate(d)}</div>
+      ${renderSlot("AM", amRow)}
+      ${renderSlot("PM", pmRow)}
+    `;
+    grid.appendChild(col);
+  }
+}
+
+/* 2. Drought Radar */
+function renderDroughtRadar() {
+  const radar = (predData.drought_radar || {})[droughtMode] || {};
+  const grid = document.getElementById("droughtGrid");
+  grid.innerHTML = "";
+  for (let d = 0; d <= 9; d++) {
+    const gap = radar[String(d)] ?? 0;
+    const isHot = gap >= 7;
+    const cell = document.createElement("div");
+    cell.className = `drought-cell ${isHot ? "hot" : ""}`;
+    cell.innerHTML = `${d}<span>${gap}d</span>`;
+    grid.appendChild(cell);
+  }
+}
+
+/* 3. Upcoming Picks with Core Top-3 vs Extended 4-6 & Confidence Score */
+function renderUpcoming() {
+  const container = document.getElementById("upcomingContainer");
+  container.innerHTML = "";
+  const upcoming = predData.upcoming || [];
+
+  upcoming.forEach((slot, idx) => {
+    const isLive = idx === 0;
+    const conf = slot.confidence || { score: 0, tier: "LOW", label: "LOW / SPLIT" };
+    const corePairs = (slot.top_pairs || []).slice(0, 3);
+    const extPairs = (slot.top_pairs || []).slice(3, 6);
+
+    const renderPairPills = (list, isCore) =>
+      list
+        .map(
+          (p) =>
+            `<div class="pair-pill ${isCore ? "core" : ""}">${p.pair}<span>(${(p.prob * 100).toFixed(2)}%)</span></div>`
+        )
+        .join("");
+
+    const modelRowsHtml = Object.entries(slot.models || {})
+      .map(([mKey, mVal]) => {
+        const pairsText = (mVal.top_pairs_prob || [])
+          .map((tp) => `${tp.pair} (${(tp.prob * 100).toFixed(1)}%)`)
+          .join(", ") || (mVal.top_pairs || []).join(", ");
+        return `
+          <div class="model-row">
+            <div class="model-row-top">
+              <span class="model-name">${MODEL_LABELS[mKey] || mKey}</span>
+              <span class="model-detail">Anchor: <strong>${mVal.anchor_digit}</strong> / ${mVal.backup_digit}</span>
+            </div>
+            <div class="model-detail">Top Pairs: ${pairsText}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const card = document.createElement("article");
+    card.className = `pred-card ${isLive ? "live-slot" : ""}`;
+    card.innerHTML = `
+      <div class="pred-card-head">
+        <div class="pred-date-group">
+          <span class="pred-date-title">${slot.short_date} (${slot.day_full})</span>
+          <span class="badge ${isLive ? "badge-live" : "badge-chained"}">
+            ${isLive ? "Next Live Draw" : `Chained #${idx + 1}`}
+          </span>
+        </div>
+        <div class="pred-date-group">
+          <span class="conf-badge conf-${conf.tier}">${conf.label} • ${conf.score}/100</span>
+          <span class="badge badge-session">${slot.session}</span>
+        </div>
+      </div>
+
+      <div class="anchors-row">
+        <div class="anchor-box primary">
+          <div class="anchor-label">Primary Anchor</div>
+          <div class="anchor-digit">${slot.primary_anchor.digit}</div>
+          <div class="anchor-meta">${(slot.primary_anchor.prob * 100).toFixed(1)}% • ${slot.primary_anchor.votes} Models</div>
+        </div>
+        <div class="anchor-box">
+          <div class="anchor-label">Backup Anchor</div>
+          <div class="anchor-digit">${slot.secondary_anchor.digit}</div>
+          <div class="anchor-meta">${(slot.secondary_anchor.prob * 100).toFixed(1)}% • ${slot.secondary_anchor.votes} Models</div>
+        </div>
+      </div>
+
+      <div class="tier-block">
+        <div class="tier-header">
+          <span class="tier-label-core">★ Core Top-3 Picks</span>
+          <span class="tier-sub">Cross: ${(slot.intersection_pairs || []).join(" / ")}</span>
+        </div>
+        <div class="pairs-row-3">${renderPairPills(corePairs, true)}</div>
+      </div>
+
+      ${
+        extPairs.length
+          ? `<div class="tier-block">
+              <div class="tier-header">
+                <span class="tier-label-ext">Extended Coverage (Ranks 4–6)</span>
+              </div>
+              <div class="pairs-row-3">${renderPairPills(extPairs, false)}</div>
+            </div>`
+          : ""
+      }
+
+      <details ${isLive ? "open" : ""}>
+        <summary class="breakdown-toggle">5-Model Breakdown & Probabilities</summary>
+        <div class="model-rows">${modelRowsHtml}</div>
+      </details>
+    `;
+    container.appendChild(card);
+  });
+}
+
+/* 4. Full Winning History Tab */
+function renderHistory() {
+  const completed = drawsData.filter((r) => r.Winning_Number !== "").slice().reverse();
+  const years = [...new Set(completed.map((r) => r.Year))];
+  const yearSel = document.getElementById("historyYearSelect");
+  const monthSel = document.getElementById("historyMonthSelect");
+
+  if (!yearSel.options.length) {
+    years.forEach((y) => {
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearSel.appendChild(opt);
+    });
+    const months = ["All Months", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    months.forEach((m, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = m;
+      monthSel.appendChild(opt);
     });
   }
 
-  const byDate = Object.fromEntries(weekDates.map((w) => [w.key, w]));
-  STATE.drawsRows.forEach((r) => {
-    if (byDate[r.Date]) {
-      const val = formatNum(r.Winning_Number);
-      if (r.Is_PM === "1") byDate[r.Date].pm = val;
-      else byDate[r.Date].am = val;
+  const selYear = yearSel.value || years[0];
+  const selMonth = parseInt(monthSel.value || "0", 10);
+
+  const filtered = completed.filter((r) => {
+    if (r.Year !== selYear) return false;
+    if (selMonth > 0) {
+      const m = parseInt(r.Date.split("/")[0], 10);
+      if (m !== selMonth) return false;
     }
+    return true;
   });
 
-  labelEl.textContent = `${weekDates[0].dayNum} – ${weekDates[4].dayNum}`;
-  grid.innerHTML = weekDates.map(renderDayColumnHtml).join("");
-}
-
-function initHistorySelectors() {
-  const completed = STATE.drawsRows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
-  if (!completed.length) return;
-
-  const years = [...new Set(completed.map((r) => parseInt(r.Year, 10)))].sort((a, b) => b - a);
-  const latest = completed[completed.length - 1];
-  const latestParts = parseDateParts(latest.Date);
-
-  if (!STATE.selectedYear) STATE.selectedYear = latestParts.year;
-  if (STATE.selectedMonth === null) STATE.selectedMonth = latestParts.monthIndex;
-
-  const yearSelect = document.getElementById("historyYearSelect");
-  yearSelect.innerHTML = years
-    .map((y) => `<option value="${y}" ${y === STATE.selectedYear ? "selected" : ""}>${y}</option>`)
+  const list = document.getElementById("historyList");
+  list.innerHTML = filtered
+    .slice(0, 120)
+    .map((r) => {
+      const dt = parseDateMDY(r.Date);
+      const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
+      const sess = r.Is_PM === "1" ? "PM" : "AM";
+      const numStr = String(parseInt(r.Winning_Number, 10)).padStart(2, "0");
+      return `
+        <div class="history-row">
+          <span><strong>${formatShortDate(dt)} ${r.Year}</strong> (${dayName}) • ${sess}</span>
+          <span class="slot-num">${numStr}</span>
+        </div>
+      `;
+    })
     .join("");
-
-  renderMonthPills();
 }
 
-function renderMonthPills() {
-  const pillsEl = document.getElementById("monthPills");
-  pillsEl.innerHTML = MONTHS_SHORT.map(
-    (mName, idx) => `
-      <button class="month-pill ${idx === STATE.selectedMonth ? "active" : ""}" data-month="${idx}">
-        ${mName}
-      </button>`
-  ).join("");
-
-  pillsEl.querySelectorAll(".month-pill").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      STATE.selectedMonth = parseInt(btn.dataset.month, 10);
-      renderMonthPills();
-      renderWinningHistory();
-    });
+/* 5. Win Log Tab with Weekly Pager, Color-Dotted Filter Chips & Actual Prob Lookup */
+function groupHistoryByWeek(historyList) {
+  const map = new Map();
+  historyList.forEach((item) => {
+    const dt = parseDateMDY(item.date);
+    const mon = getMondayOfWeek(dt);
+    const key = `${mon.getFullYear()}-${mon.getMonth() + 1}-${mon.getDate()}`;
+    if (!map.has(key)) {
+      const fri = new Date(mon);
+      fri.setDate(mon.getDate() + 4);
+      map.set(key, {
+        key,
+        monday: mon,
+        label: `Week of ${formatShortDate(mon)} – ${formatShortDate(fri)} ${fri.getFullYear()}`,
+        items: [],
+      });
+    }
+    map.get(key).items.push(item);
   });
+  return Array.from(map.values()).sort((a, b) => b.monday - a.monday);
 }
 
-function renderWinningHistory() {
-  const container = document.getElementById("winningMonthGrid");
-  if (!STATE.drawsRows.length || STATE.selectedYear === null) return;
+function renderWinLog() {
+  const hist = predData.history || [];
+  const totalEval = hist.length;
+  const exactCnt = hist.filter((x) => x.outcome === "EXACT").length;
+  const revCnt = hist.filter((x) => x.outcome === "REVERSE").length;
+  const ancCnt = hist.filter((x) => x.outcome === "ANCHOR_HIT").length;
+  const totalWins = exactCnt + revCnt + ancCnt;
+  const winRate = totalEval ? ((totalWins / totalEval) * 100).toFixed(1) : "0.0";
 
-  const lookup = {};
-  STATE.drawsRows.forEach((r) => {
-    const p = parseDateParts(r.Date);
-    if (p.year === STATE.selectedYear && p.monthIndex === STATE.selectedMonth) {
-      if (!lookup[p.day]) lookup[p.day] = { am: "—", pm: "—" };
-      const val = formatNum(r.Winning_Number);
-      if (r.Is_PM === "1") lookup[p.day].pm = val;
-      else lookup[p.day].am = val;
-    }
-  });
+  document.getElementById("winlogAllTimeStats").innerHTML = `
+    <div class="stat-box"><div class="stat-label">All-Time Evaluated</div><div class="stat-val">${totalEval}</div></div>
+    <div class="stat-box"><div class="stat-label">All-Time Wins</div><div class="stat-val green">${totalWins} (${winRate}%)</div></div>
+    <div class="stat-box"><div class="stat-label">Exact + Reverse</div><div class="stat-val gold">${exactCnt + revCnt}</div></div>
+    <div class="stat-box"><div class="stat-label">Anchor Hits</div><div class="stat-val blue">${ancCnt}</div></div>
+  `;
 
-  const daysInMonth = new Date(STATE.selectedYear, STATE.selectedMonth + 1, 0).getDate();
-  const weeks = [];
-  let currentWeek = null;
+  const weeks = groupHistoryByWeek(hist);
+  if (!weeks.length) return;
+  if (winlogWeekIdx >= weeks.length) winlogWeekIdx = 0;
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dt = new Date(STATE.selectedYear, STATE.selectedMonth, day);
-    const dow = dt.getDay();
-    if (dow === 0 || dow === 6) continue;
+  const curWeek = weeks[winlogWeekIdx];
+  document.getElementById("winlogWeekTitle").textContent = curWeek.label;
+  document.getElementById("winlogWeekSub").textContent = `Week ${winlogWeekIdx + 1} of ${weeks.length}`;
+  document.getElementById("winlogPrevWeek").disabled = winlogWeekIdx >= weeks.length - 1;
+  document.getElementById("winlogNextWeek").disabled = winlogWeekIdx <= 0;
 
-    if (!currentWeek || dow === 1) {
-      currentWeek = {
-        startDay: day,
-        endDay: day,
-        days: [],
-      };
-      weeks.push(currentWeek);
-    }
-    currentWeek.endDay = day;
-    const key = `${STATE.selectedMonth + 1}/${day}/${STATE.selectedYear}`;
-    const vals = lookup[day] || { am: "—", pm: "—" };
-    currentWeek.days.push({
-      key,
-      dayNum: `${day} ${MONTHS_SHORT[STATE.selectedMonth]}`,
-      dayShort: DAYS_SHORT[dow],
-      am: vals.am,
-      pm: vals.pm,
-    });
-  }
+  const wItems = curWeek.items;
+  const wExact = wItems.filter((x) => x.outcome === "EXACT").length;
+  const wRev = wItems.filter((x) => x.outcome === "REVERSE").length;
+  const wAnc = wItems.filter((x) => x.outcome === "ANCHOR_HIT").length;
+  const wMiss = wItems.filter((x) => x.outcome === "MISS").length;
+  const wWins = wExact + wRev + wAnc;
+  const wRate = wItems.length ? ((wWins / wItems.length) * 100).toFixed(1) : "0.0";
 
-  if (!weeks.length) {
-    container.innerHTML = `<p class="muted">No weekday draws for ${MONTHS_SHORT[STATE.selectedMonth]} ${STATE.selectedYear}.</p>`;
-    return;
-  }
+  document.getElementById("winlogWeeklyStats").innerHTML = `
+    <div class="stat-box"><div class="stat-label">This Week Draws</div><div class="stat-val">${wItems.length}</div></div>
+    <div class="stat-box"><div class="stat-label">Weekly Wins</div><div class="stat-val green">${wWins}/${wItems.length} (${wRate}%)</div></div>
+    <div class="stat-box"><div class="stat-label">Exact / Rev</div><div class="stat-val gold">${wExact}/${wRev}</div></div>
+    <div class="stat-box"><div class="stat-label">Anchor Hits</div><div class="stat-val blue">${wAnc}</div></div>
+  `;
 
-  container.innerHTML = weeks
+  const chipDefs = [
+    { key: "ALL", label: "All", count: wItems.length },
+    { key: "EXACT", label: "Exact", count: wExact },
+    { key: "REVERSE", label: "Reverse", count: wRev },
+    { key: "ANCHOR_HIT", label: "Anchor", count: wAnc },
+    { key: "MISS", label: "Miss", count: wMiss },
+  ];
+
+  document.getElementById("winlogFilterChips").innerHTML = chipDefs
     .map(
-      (wk, idx) => `
-      <div class="week-card">
-        <div class="week-card-label">
-          <span>Week ${idx + 1}</span>
-          <span>${wk.startDay}–${wk.endDay} ${MONTHS_SHORT[STATE.selectedMonth]}</span>
-        </div>
-        <div class="compact-days-row">
-          ${wk.days.map(renderDayColumnHtml).join("")}
-        </div>
-      </div>`
+      (c) => `
+      <button class="filter-chip ${winlogOutcomeFilter === c.key ? "active" : ""}" data-outcome="${c.key}">
+        <span class="filter-dot dot-${c.key}"></span>
+        <span>${c.label} (${c.count})</span>
+      </button>
+    `
     )
     .join("");
+
+  const visibleItems =
+    winlogOutcomeFilter === "ALL"
+      ? wItems
+      : wItems.filter((x) => x.outcome === winlogOutcomeFilter);
+
+  const badgeTextMap = {
+    EXACT: "★ GOLD: EXACT",
+    REVERSE: "◆ EMERALD: REVERSE (R)",
+    ANCHOR_HIT: "● BLUE: ANCHOR",
+    MISS: "MISS",
+  };
+
+  document.getElementById("winlogCards").innerHTML = visibleItems
+    .map((item) => {
+      const pairsStr = (item.top_pairs || []).map((p) => p.pair).join(", ");
+      const lookup = item.actual_prob_lookup || {};
+      const lookupParts = Object.entries(lookup).map(([k, v]) => {
+        const name = k === "Consensus" ? "Consensus" : MODEL_LABELS[k] || k;
+        return `${name}: <strong>${(v.prob * 100).toFixed(2)}%</strong> (#${v.rank})`;
+      });
+
+      const modelsHtml = Object.entries(item.models || {})
+        .map(([mKey, mVal]) => {
+          const pts = mVal.earned_pts ?? 0;
+          const pairsTxt = (mVal.top_pairs_prob || [])
+            .map((tp) => `${tp.pair} (${(tp.prob * 100).toFixed(1)}%)`)
+            .join(", ") || (mVal.top_pairs || []).join(", ");
+          return `
+            <div class="model-row">
+              <div class="model-row-top">
+                <span class="model-name">${MODEL_LABELS[mKey] || mKey}</span>
+                <span class="pts-badge ${pts === 0 ? "zero" : ""}">${pts > 0 ? `+${pts.toFixed(1)} pts` : "0.0 pts"}</span>
+              </div>
+              <div class="model-detail">Anchors: ${mVal.anchor_digit} / ${mVal.backup_digit} • Pairs: ${pairsTxt}</div>
+            </div>
+          `;
+        })
+        .join("");
+
+      return `
+        <article class="winlog-card outcome-${item.outcome}">
+          <div class="pred-date-title">${item.short_date} (${item.day_full}) • ${item.session} — Actual: ${item.actual}</div>
+          <div class="model-detail">Consensus Anchors: ${item.primary_anchor.digit} & ${item.secondary_anchor.digit} • Pairs: ${pairsStr}</div>
+          <div class="outcome-pill ${item.outcome}">${badgeTextMap[item.outcome] || item.outcome}</div>
+          ${
+            lookupParts.length
+              ? `<div class="actual-lookup-box">Actual <strong>${item.actual}</strong> Model Probabilities: ${lookupParts.join(" • ")}</div>`
+              : ""
+          }
+          <div class="model-rows">${modelsHtml}</div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
-async function githubGetFile(path) {
-  const cfg = getConfig();
-  if (!cfg.owner || !cfg.repo || !cfg.token) {
-    throw new Error("Please configure your GitHub token in the ⚙ Gear icon first.");
+/* 6. 5-Model Committee Weights Tab */
+function renderWeights() {
+  const weights = predData.model_weights || {};
+  const stats = predData.model_stats || {};
+  const container = document.getElementById("weightsContainer");
+
+  container.innerHTML = Object.keys(MODEL_LABELS)
+    .map((mKey) => {
+      const wt = ((weights[mKey] || 0.2) * 100).toFixed(1);
+      const st = stats[mKey] || {};
+      const ev = st.evaluated || 0;
+      const avg = ev ? (st.total_points / ev).toFixed(2) : "0.00";
+      const ancRate = ev ? ((st.anchor_hits / ev) * 100).toFixed(1) : "0.0";
+
+      return `
+        <div class="weight-card">
+          <div class="weight-top">
+            <span class="section-title">${MODEL_LABELS[mKey]}</span>
+            <span class="weight-pill">${wt}% wt</span>
+          </div>
+          <div class="model-detail">Score: <strong>${(st.total_points || 0).toFixed(1)} pts</strong> (Avg: ${avg}/draw)</div>
+          <div class="model-detail">Dual-Anchor Hit: <strong>${ancRate}%</strong> (${st.anchor_hits || 0}/${ev})</div>
+          <div class="model-detail">Exact: <strong>${st.exact_hits || 0}</strong> • Rev: ${st.reverse_hits || 0} • Pos Pair: ${st.pos_pair_hits || 0}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+/* 7. Draw Logger + GitHub API Commit */
+function populateLoggerSlots() {
+  const sel = document.getElementById("slotSelect");
+  const openRows = drawsData.filter((r) => r.Winning_Number === "").slice(0, 10);
+  sel.innerHTML = openRows
+    .map((r) => {
+      const dt = parseDateMDY(r.Date);
+      const sess = r.Is_PM === "1" ? "PM" : "AM";
+      return `<option value="${r.Session_ID}">${formatShortDate(dt)} (${sess}) — Slot #${r.Session_ID}</option>`;
+    })
+    .join("");
+}
+
+async function commitDrawsCsv(updatedRows, message) {
+  const pat = getPat();
+  if (!pat) {
+    document.getElementById("tokenModal").classList.remove("hidden");
+    return false;
   }
-  const branch = cfg.branch || "main";
-  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${branch}`;
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${cfg.token}`,
-      Accept: "application/vnd.github+json",
-    },
+  const statusEl = document.getElementById("loggerStatus");
+  statusEl.textContent = "Saving to GitHub...";
+
+  const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data/draws.csv`;
+  const getRes = await fetch(apiUrl, {
+    headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github.v3+json" },
   });
-  if (!res.ok) {
-    throw new Error(`GitHub API error (${res.status}) reading ${path}`);
-  }
-  return res.json();
-}
+  const fileData = await getRes.json();
+  const encodedContent = btoa(unescape(encodeURIComponent(toCSV(updatedRows))));
 
-async function githubPutFile(path, contentStr, sha, message) {
-  const cfg = getConfig();
-  const branch = cfg.branch || "main";
-  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}`;
-  const res = await fetch(url, {
+  const putRes = await fetch(apiUrl, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${cfg.token}`,
-      Accept: "application/vnd.github+json",
+      Authorization: `token ${pat}`,
+      Accept: "application/vnd.github.v3+json",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       message,
-      content: encodeBase64Unicode(contentStr),
-      sha,
-      branch,
+      content: encodedContent,
+      sha: fileData.sha,
+      branch: BRANCH,
     }),
   });
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    throw new Error(errBody.message || `GitHub commit failed (${res.status})`);
+
+  if (!putRes.ok) {
+    statusEl.textContent = "GitHub save failed. Check your token permissions.";
+    return false;
   }
-  return res.json();
+  statusEl.textContent = "Saved! GitHub Action is updating predictions (~45s)...";
+  return true;
 }
 
-async function handleLogDraw(e) {
-  e.preventDefault();
-  const feedback = document.getElementById("loggerFeedback");
-  const btn = document.getElementById("submitDrawBtn");
-  const sid = document.getElementById("sessionSelect").value;
-  const rawVal = document.getElementById("winningInput").value.trim();
-
-  if (!/^\d{1,2}$/.test(rawVal)) {
-    feedback.textContent = "Enter a valid 2-digit number from 00 to 99.";
-    return;
-  }
-  const numInt = parseInt(rawVal, 10);
-  const numFormatted = String(numInt).padStart(2, "0");
-
-  btn.disabled = true;
-  feedback.textContent = `Saving ${numFormatted} to GitHub...`;
-
-  try {
-    const fileData = await githubGetFile("data/draws.csv");
-    const latestCsv = decodeBase64Unicode(fileData.content);
-    const rows = parseCsv(latestCsv);
-    const target = rows.find((r) => r.Session_ID === String(sid));
-    if (!target) throw new Error("Target date slot not found in draws.csv");
-
-    const p = parseDateParts(target.Date);
-    const sessLabel = target.Is_PM === "1" ? "PM" : "AM";
-    target.Winning_Number = String(numInt);
-    const updatedCsv = toCsv(rows);
-
-    await githubPutFile(
-      "data/draws.csv",
-      updatedCsv,
-      fileData.sha,
-      `feat(draw): ${p.shortDate} (${p.dayShort}) ${sessLabel} = ${numFormatted}`
-    );
-
-    document.getElementById("winningInput").value = "";
-    feedback.textContent = `Saved ${p.shortDate} (${p.dayFull}) ${sessLabel} = ${numFormatted}! Chained predictions updating (~45s). Tap ↻ once Action finishes.`;
-    STATE.drawsRows = rows;
-    populateSessionDropdown();
-    renderCurrentWeek();
-    renderWinningHistory();
-  } catch (err) {
-    feedback.textContent = `Error: ${err.message}`;
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function handleUndoLastDraw() {
-  const feedback = document.getElementById("loggerFeedback");
-  const undoBtn = document.getElementById("undoLastDrawBtn");
-  if (!confirm("Clear the most recently logged draw result in draws.csv?")) return;
-
-  undoBtn.disabled = true;
-  feedback.textContent = "Clearing last draw on GitHub...";
-
-  try {
-    const fileData = await githubGetFile("data/draws.csv");
-    const latestCsv = decodeBase64Unicode(fileData.content);
-    const rows = parseCsv(latestCsv);
-    const completed = rows.filter((r) => r.Winning_Number && r.Winning_Number !== "NaN");
-    if (!completed.length) throw new Error("No completed draws found to undo.");
-
-    const lastRow = completed[completed.length - 1];
-    const p = parseDateParts(lastRow.Date);
-    const sessLabel = lastRow.Is_PM === "1" ? "PM" : "AM";
-    const oldVal = formatNum(lastRow.Winning_Number);
-    lastRow.Winning_Number = "";
-
-    await githubPutFile(
-      "data/draws.csv",
-      toCsv(rows),
-      fileData.sha,
-      `fix(draw): undo ${p.shortDate} (${p.dayShort}) ${sessLabel} (${oldVal})`
-    );
-
-    feedback.textContent = `Cleared ${p.shortDate} ${sessLabel} (${oldVal}). Models re-syncing (~45s).`;
-    STATE.drawsRows = rows;
-    populateSessionDropdown();
-    renderCurrentWeek();
-    renderWinningHistory();
-  } catch (err) {
-    feedback.textContent = `Undo error: ${err.message}`;
-  } finally {
-    undoBtn.disabled = false;
-  }
-}
-
-function renderRadar() {
-  const grid = document.getElementById("radarGrid");
-  const radar = STATE.predictions?.drought_radar?.[STATE.activeRadar];
-  if (!radar) {
-    grid.innerHTML = `<span class="muted">No radar data</span>`;
-    return;
-  }
-  const thresholdHigh = STATE.activeRadar === "any_pos_gaps" ? 9 : 22;
-  const thresholdMid = STATE.activeRadar === "any_pos_gaps" ? 6 : 15;
-
-  grid.innerHTML = Object.entries(radar)
-    .map(([digit, gap]) => {
-      const cls = gap >= thresholdHigh ? "hot-alert" : gap >= thresholdMid ? "warm-alert" : "";
-      return `
-        <div class="radar-chip ${cls}" title="Digit ${digit}: ${gap} draws since last appearance">
-          <b>${digit}</b><span>${gap}d</span>
-        </div>`;
-    })
-    .join("");
-}
-
-function renderUpcoming() {
-  const container = document.getElementById("upcomingGrid");
-  const list = STATE.predictions?.upcoming || [];
-  if (!list.length) {
-    container.innerHTML = `<p class="muted">No upcoming predictions available yet.</p>`;
-    return;
-  }
-
-  container.innerHTML = list
-    .map((item, idx) => {
-      const p = parseDateParts(item.date);
-      const shortDate = item.short_date || p.shortDate;
-      const dayFull = item.day_full || p.dayFull;
-      const p1 = item.primary_anchor;
-      const p2 = item.secondary_anchor;
-
-      const chainTrail = (item.chained_from || []).join(" → ");
-      const modeTag = idx === 0
-        ? `<span class="chip" style="margin-left:6px;font-size:10px">Next Live Draw</span>`
-        : `<span class="chain-pill" title="Calculated sequentially from prior predicted top pairs">Chained${chainTrail ? ` (${chainTrail})` : ""}</span>`;
-
-      const pairsHtml = (item.top_pairs || [])
-        .map(
-          (pairObj, pIdx) => `
-          <div class="pair-badge ${pIdx === 0 ? "top1-pair" : ""}" title="Supporters: ${(pairObj.supporters || []).join(", ")}">
-            ${pairObj.pair} <span>(${(pairObj.prob * 100).toFixed(2)}%)</span>
-          </div>`
-        )
-        .join("");
-
-      const modelsHtml = Object.entries(item.models || {})
-        .map(
-          ([mName, m]) => `
-          <div class="model-mini-row">
-            <strong>${mName.replace("_", " ")}</strong>
-            <span>Anchor: <b>${m.anchor_digit}</b> / <b>${m.backup_digit ?? "—"}</b> • Pairs: ${m.top_pairs.join(", ")}</span>
-          </div>`
-        )
-        .join("");
-
-      return `
-        <article class="pred-card">
-          <div class="card-header" style="margin-bottom:0">
-            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
-              <strong style="font-size:15px">${shortDate} (${dayFull})</strong>
-              ${modeTag}
-            </div>
-            <span class="session-pill ${item.session.toLowerCase()}">${item.session}</span>
-          </div>
-
-          <div class="anchor-box">
-            <div class="anchor-pill primary">
-              <div class="anchor-label">Primary Anchor</div>
-              <div class="anchor-val">${p1.digit}</div>
-              <div class="anchor-meta">${(p1.prob * 100).toFixed(1)}% • ${p1.votes} Models</div>
-            </div>
-            <div class="anchor-pill">
-              <div class="anchor-label">Backup Anchor</div>
-              <div class="anchor-val">${p2.digit}</div>
-              <div class="anchor-meta">${(p2.prob * 100).toFixed(1)}% • ${p2.votes} Models</div>
-            </div>
-          </div>
-
-          <div>
-            <div class="muted small" style="margin-bottom:5px">
-              Top Pairs (Cross: <b>${(item.intersection_pairs || []).join(" / ")}</b>)
-            </div>
-            <div class="pairs-row">${pairsHtml}</div>
-          </div>
-
-          <details>
-            <summary>5-Model Breakdown</summary>
-            <div class="model-mini-list">${modelsHtml}</div>
-          </details>
-        </article>`;
-    })
-    .join("");
-}
-
-function computeClientModelScore(m, actStr) {
-  if (typeof m.earned_pts === "number") {
-    const d = m.score_detail || {};
-    return {
-      earned: m.earned_pts,
-      hitExact: (d.exact_cnt || 0) > 0,
-      hitRev: (d.rev_cnt || 0) > 0,
-      hitAnchor: Boolean(d.hit_any_anchor),
-      hitPos: (d.pos_cnt || 0) > 0,
-      hitAnyDigit: (d.any_cnt || 0) > 0,
-    };
-  }
-
-  const actNum = parseInt(actStr, 10);
-  const actT = Math.floor(actNum / 10);
-  const actU = actNum % 10;
-  const revStr = `${actU}${actT}`;
-  const actDigits = new Set([actT, actU]);
-
-  const a1 = Number(m.anchor_digit);
-  const a2 = m.backup_digit !== undefined ? Number(m.backup_digit) : -1;
-  const hitA1 = actDigits.has(a1);
-  const hitA2 = actDigits.has(a2);
-
-  let anchorPts = 0;
-  if (hitA1 && hitA2 && a1 !== a2) anchorPts = 1.5;
-  else if (hitA1 || hitA2) anchorPts = 1.0;
-
-  let pairPts = 0;
-  let hitExact = false;
-  let hitRev = false;
-  let hitPos = false;
-  let hitAnyDigit = false;
-
-  (m.top_pairs || []).slice(0, 3).forEach((pStr) => {
-    const pNum = parseInt(pStr, 10);
-    const pt = Math.floor(pNum / 10);
-    const pu = pNum % 10;
-    if (pStr === actStr) {
-      pairPts += 3.0;
-      hitExact = true;
-    } else if (pStr === revStr && actStr !== revStr) {
-      pairPts += 2.0;
-      hitRev = true;
-    } else if (pt == actT || pu == actU) {
-      pairPts += 0.2;
-      hitPos = true;
-    } else if (actDigits.has(pt) || actDigits.has(pu)) {
-      pairPts += 0.1;
-      hitAnyDigit = true;
-    }
-  });
-
-  return {
-    earned: Math.round((anchorPts + pairPts) * 100) / 100,
-    hitExact,
-    hitRev,
-    hitAnchor: hitA1 || hitA2,
-    hitPos,
-    hitAnyDigit,
-  };
-}
-
-function groupWinLogByWeeks(hist) {
-  const weekMap = new Map();
-  hist.forEach((item) => {
-    const { key, label } = getMondayKeyAndLabel(item.date);
-    if (!weekMap.has(key)) {
-      weekMap.set(key, { key, label, items: [] });
-    }
-    weekMap.get(key).items.push(item);
-  });
-  return Array.from(weekMap.values()).sort((a, b) => b.key.localeCompare(a.key));
-}
-
-function renderWinLog() {
-  const hist = STATE.predictions?.history || [];
-  const strip = document.getElementById("scoreSummaryStrip");
-  const weekScoreEl = document.getElementById("winLogWeekScoreStrip");
-  const listEl = document.getElementById("historyList");
-  const weekTitleEl = document.getElementById("winLogWeekTitle");
-  const weekSubEl = document.getElementById("winLogWeekSub");
-  const prevBtn = document.getElementById("prevWinWeekBtn");
-  const nextBtn = document.getElementById("nextWinWeekBtn");
-
-  // 1. All-Time Summary Strip
-  const total = hist.length;
-  const exact = hist.filter((h) => h.outcome === "EXACT").length;
-  const rev = hist.filter((h) => h.outcome === "REVERSE").length;
-  const anchor = hist.filter((h) => h.outcome === "ANCHOR_HIT").length;
-  const anyWin = exact + rev + anchor;
-
-  strip.innerHTML = `
-    <div class="stat-box"><div class="muted small">All-Time Evaluated</div><div class="num">${total}</div></div>
-    <div class="stat-box"><div class="muted small">All-Time Wins</div><div class="num" style="color:#34d399">${anyWin} (${total ? ((anyWin / total) * 100).toFixed(1) : 0}%)</div></div>
-    <div class="stat-box"><div class="muted small">Exact + Reverse</div><div class="num" style="color:#fbbf24">${exact + rev}</div></div>
-    <div class="stat-box"><div class="muted small">Anchor Hits</div><div class="num" style="color:#38bdf8">${anchor}</div></div>
-  `;
-
-  // 2. Week-by-Week Grouping
-  STATE.winLogWeeks = groupWinLogByWeeks(hist);
-  if (!STATE.winLogWeeks.length) {
-    weekTitleEl.textContent = "No Evaluated Weeks Yet";
-    weekSubEl.textContent = "";
-    weekScoreEl.innerHTML = "";
-    prevBtn.disabled = true;
-    nextBtn.disabled = true;
-    listEl.innerHTML = `<p class="muted">Every forecast is automatically graded here once its result is logged.</p>`;
-    return;
-  }
-
-  if (STATE.winLogWeekIndex >= STATE.winLogWeeks.length) STATE.winLogWeekIndex = 0;
-  if (STATE.winLogWeekIndex < 0) STATE.winLogWeekIndex = 0;
-
-  const currentWeek = STATE.winLogWeeks[STATE.winLogWeekIndex];
-  weekTitleEl.textContent = `Week of ${currentWeek.label}`;
-  weekSubEl.textContent = `Week ${STATE.winLogWeeks.length - STATE.winLogWeekIndex} of ${STATE.winLogWeeks.length}`;
-  prevBtn.disabled = STATE.winLogWeekIndex >= STATE.winLogWeeks.length - 1;
-  nextBtn.disabled = STATE.winLogWeekIndex <= 0;
-
-  // Weekly Scorecard
-  const wkItems = currentWeek.items;
-  const wkTotal = wkItems.length;
-  const wkExact = wkItems.filter((h) => h.outcome === "EXACT").length;
-  const wkRev = wkItems.filter((h) => h.outcome === "REVERSE").length;
-  const wkAnchor = wkItems.filter((h) => h.outcome === "ANCHOR_HIT").length;
-  const wkWins = wkExact + wkRev + wkAnchor;
-
-  weekScoreEl.innerHTML = `
-    <div class="wk-pill"><span>This Week Draws</span><b>${wkTotal}</b></div>
-    <div class="wk-pill"><span>Weekly Wins</span><b style="color:#34d399">${wkWins}/${wkTotal} (${wkTotal ? ((wkWins / wkTotal) * 100).toFixed(1) : 0}%)</b></div>
-    <div class="wk-pill"><span>Exact / Rev</span><b style="color:#fbbf24">${wkExact} / ${wkRev}</b></div>
-    <div class="wk-pill"><span>Anchor Hits</span><b style="color:#38bdf8">${wkAnchor}</b></div>
-  `;
-
-  const filtered = STATE.activeFilter === "ALL" ? wkItems : wkItems.filter((h) => h.outcome === STATE.activeFilter);
-  if (!filtered.length) {
-    listEl.innerHTML = `<p class="muted">No draws match this filter in ${currentWeek.label}.</p>`;
-    return;
-  }
-
-  listEl.innerHTML = filtered
-    .map((h) => {
-      const p = parseDateParts(h.date);
-      const shortDate = h.short_date || p.shortDate;
-      const dayFull = h.day_full || p.dayFull;
-      const pairs = (h.top_pairs || []).map((x) => x.pair).join(", ");
-      const actStr = String(h.actual || "").padStart(2, "0");
-
-      const allModelsHtml = Object.entries(h.models || {})
-        .map(([mName, m]) => {
-          const mPairs = m.top_pairs || [];
-          const sc = computeClientModelScore(m, actStr);
-
-          let tagBadge = "";
-          let rowCls = "";
-          if (sc.hitExact) {
-            tagBadge = `<span class="mini-hit gold">EXACT</span>`;
-            rowCls = "hit-row";
-          } else if (sc.hitRev) {
-            tagBadge = `<span class="mini-hit emerald">REV</span>`;
-            rowCls = "hit-row";
-          } else if (sc.hitAnchor) {
-            tagBadge = `<span class="mini-hit blue">ANCHOR</span>`;
-            rowCls = "hit-row";
-          } else if (sc.hitPos) {
-            tagBadge = `<span class="mini-hit pos">POS</span>`;
-            rowCls = "hit-row-soft";
-          } else if (sc.hitAnyDigit) {
-            tagBadge = `<span class="mini-hit digit">DIGIT</span>`;
-            rowCls = "hit-row-soft";
-          }
-
-          const ptsBadge = sc.earned > 0
-            ? `<span class="pts-pill earned">+${sc.earned.toFixed(1)} pts</span>`
-            : `<span class="pts-pill zero">0.0 pts</span>`;
-
-          return `
-            <div class="winlog-model-item ${rowCls}">
-              <div class="winlog-model-top">
-                <strong>${mName.replace("_", " ")}</strong>
-                <div class="winlog-badges">${tagBadge}${ptsBadge}</div>
-              </div>
-              <div class="muted small">
-                Anchors: <b>${m.anchor_digit}</b> / <b>${m.backup_digit ?? "—"}</b> • Pairs: <b>${mPairs.join(", ")}</b>
-              </div>
-            </div>`;
-        })
-        .join("");
-
-      const labelMap = {
-        EXACT: "★ GOLD: EXACT",
-        REVERSE: "◆ EMERALD: REVERSE (R)",
-        ANCHOR_HIT: "● BLUE: ANCHOR",
-        MISS: "MISS",
-      };
-
-      return `
-        <div class="hist-row ${h.outcome}">
-          <div class="hist-row-head">
-            <div>
-              <strong>${shortDate} (${dayFull}) • ${h.session}</strong> — Actual: <b style="font-size:16px">${actStr}</b>
-              <div class="muted small">
-                Consensus Anchors: <b>${h.primary_anchor?.digit}</b> & <b>${h.secondary_anchor?.digit}</b> • Consensus Pairs: <b>${pairs}</b>
-              </div>
-            </div>
-            <span class="outcome-tag ${h.outcome}">${labelMap[h.outcome] || h.outcome}</span>
-          </div>
-          ${allModelsHtml ? `<div class="winlog-models-grid">${allModelsHtml}</div>` : ""}
-        </div>`;
-    })
-    .join("");
-}
-
-function renderModels() {
-  const board = document.getElementById("modelLeaderboard");
-  const weights = STATE.predictions?.model_weights || {};
-  const stats = STATE.predictions?.model_stats || {};
-
-  board.innerHTML = Object.keys(weights)
-    .map((mName) => {
-      const w = weights[mName] ?? 0.2;
-      const st = stats[mName] || {
-        evaluated: 0, total_points: 0, anchor_hits: 0, exact_hits: 0, reverse_hits: 0, pos_pair_hits: 0
-      };
-      const evalCnt = st.evaluated || 0;
-      const totPts = Number(st.total_points || 0);
-      const avgPts = evalCnt ? (totPts / evalCnt).toFixed(2) : "—";
-      const rate = evalCnt ? ((st.anchor_hits / evalCnt) * 100).toFixed(1) + "%" : "—";
-
-      return `
-        <div class="model-stat-card">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong>${mName.replace("_", " ")}</strong>
-            <span class="violet-chip">${(w * 100).toFixed(1)}% wt</span>
-          </div>
-          <div class="muted small" style="margin-top:7px">
-            Score: <b>${totPts.toFixed(1)} pts</b> (Avg: <b>${avgPts}</b>/draw)<br/>
-            Dual-Anchor Hit: <b>${rate}</b> (${st.anchor_hits}/${evalCnt})<br/>
-            Exact: <b>${st.exact_hits}</b> • Rev: <b>${st.reverse_hits}</b> • Pos Pair: <b>${st.pos_pair_hits || 0}</b>
-          </div>
-        </div>`;
-    })
-    .join("");
-}
-
-function renderPredictionViews() {
-  renderRadar();
-  renderUpcoming();
-  renderWinLog();
-  renderModels();
-}
-
+/* Event Wiring */
 document.addEventListener("DOMContentLoaded", () => {
-  const cfg = getConfig();
-  if (cfg.owner) document.getElementById("ghOwner").value = cfg.owner;
-  if (cfg.repo) document.getElementById("ghRepo").value = cfg.repo;
-  if (cfg.branch) document.getElementById("ghBranch").value = cfg.branch;
-  if (cfg.token) document.getElementById("ghToken").value = cfg.token;
+  fetchData();
 
-  document.getElementById("logDrawForm").addEventListener("submit", handleLogDraw);
-  document.getElementById("undoLastDrawBtn").addEventListener("click", handleUndoLastDraw);
-  document.getElementById("refreshBtn").addEventListener("click", fetchRepoData);
+  // Primary Navigation Tabs
+  document.getElementById("primaryNav").addEventListener("click", (e) => {
+    const btn = e.target.closest(".nav-tab");
+    if (!btn) return;
+    document.querySelectorAll(".nav-tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+  });
 
-  document.getElementById("prevWinWeekBtn").addEventListener("click", () => {
-    if (STATE.winLogWeekIndex < STATE.winLogWeeks.length - 1) {
-      STATE.winLogWeekIndex += 1;
-      renderWinLog();
+  // This Week / Last Week Toggle + Swipe
+  document.querySelectorAll(".week-toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      topWeekOffset = parseInt(btn.dataset.weekOffset, 10);
+      renderWeekStrip();
+    });
+  });
+
+  let touchStartX = 0;
+  const stripCard = document.getElementById("weekStripCard");
+  stripCard.addEventListener("touchstart", (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  stripCard.addEventListener("touchend", (e) => {
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    if (dx > 45 && topWeekOffset === 0) {
+      topWeekOffset = 1;
+      renderWeekStrip();
+    } else if (dx < -45 && topWeekOffset === 1) {
+      topWeekOffset = 0;
+      renderWeekStrip();
+    }
+  }, { passive: true });
+
+  // Drought Radar Tabs
+  document.getElementById("droughtTabs").addEventListener("click", (e) => {
+    const btn = e.target.closest(".drought-tab");
+    if (!btn) return;
+    document.querySelectorAll(".drought-tab").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    droughtMode = btn.dataset.mode;
+    renderDroughtRadar();
+  });
+
+  // Win Log Week Pager & Filter Chips
+  document.getElementById("winlogPrevWeek").addEventListener("click", () => {
+    winlogWeekIdx += 1;
+    renderWinLog();
+  });
+  document.getElementById("winlogNextWeek").addEventListener("click", () => {
+    winlogWeekIdx = Math.max(0, winlogWeekIdx - 1);
+    renderWinLog();
+  });
+  document.getElementById("winlogFilterChips").addEventListener("click", (e) => {
+    const chip = e.target.closest(".filter-chip");
+    if (!chip) return;
+    winlogOutcomeFilter = chip.dataset.outcome;
+    renderWinLog();
+  });
+
+  // History Filters
+  document.getElementById("historyYearSelect").addEventListener("change", renderHistory);
+  document.getElementById("historyMonthSelect").addEventListener("change", renderHistory);
+
+  // Save Draw Result
+  document.getElementById("saveDrawBtn").addEventListener("click", async () => {
+    const sid = document.getElementById("slotSelect").value;
+    const rawVal = document.getElementById("winningInput").value.trim();
+    if (!/^\d{1,2}$/.test(rawVal)) {
+      document.getElementById("loggerStatus").textContent = "Enter a valid 2-digit number (00–99).";
+      return;
+    }
+    const numVal = String(parseInt(rawVal, 10));
+    const updated = drawsData.map((r) => (r.Session_ID === sid ? { ...r, Winning_Number: numVal } : r));
+    const ok = await commitDrawsCsv(updated, `Log draw result for Slot #${sid}: ${numVal.padStart(2, "0")}`);
+    if (ok) {
+      drawsData = updated;
+      document.getElementById("winningInput").value = "";
+      renderAll();
     }
   });
-  document.getElementById("nextWinWeekBtn").addEventListener("click", () => {
-    if (STATE.winLogWeekIndex > 0) {
-      STATE.winLogWeekIndex -= 1;
-      renderWinLog();
+
+  // Undo Last Completed Draw
+  document.getElementById("undoLastBtn").addEventListener("click", async () => {
+    const completed = drawsData.filter((r) => r.Winning_Number !== "");
+    if (!completed.length) return;
+    const lastRow = completed[completed.length - 1];
+    const updated = drawsData.map((r) =>
+      r.Session_ID === lastRow.Session_ID ? { ...r, Winning_Number: "" } : r
+    );
+    const ok = await commitDrawsCsv(updated, `Undo last draw Slot #${lastRow.Session_ID}`);
+    if (ok) {
+      drawsData = updated;
+      renderAll();
     }
   });
 
-  document.getElementById("historyYearSelect").addEventListener("change", (e) => {
-    STATE.selectedYear = parseInt(e.target.value, 10);
-    renderWinningHistory();
+  // Refresh & Token Modal
+  document.getElementById("refreshBtn").addEventListener("click", fetchData);
+  document.getElementById("tokenBtn").addEventListener("click", () => {
+    document.getElementById("patInput").value = getPat();
+    document.getElementById("tokenModal").classList.remove("hidden");
   });
-
-  document.getElementById("settingsBtn").addEventListener("click", () => {
-    document.getElementById("settingsModal").classList.remove("hidden");
+  document.getElementById("closeModalBtn").addEventListener("click", () => {
+    document.getElementById("tokenModal").classList.add("hidden");
   });
-  document.getElementById("closeSettingsBtn").addEventListener("click", () => {
-    document.getElementById("settingsModal").classList.add("hidden");
+  document.getElementById("savePatBtn").addEventListener("click", () => {
+    localStorage.setItem("sai2d_gh_pat", document.getElementById("patInput").value.trim());
+    document.getElementById("tokenModal").classList.add("hidden");
   });
-  document.getElementById("settingsForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    saveConfig({
-      owner: document.getElementById("ghOwner").value.trim(),
-      repo: document.getElementById("ghRepo").value.trim(),
-      branch: document.getElementById("ghBranch").value.trim() || "main",
-      token: document.getElementById("ghToken").value.trim(),
-    });
-    document.getElementById("settingsModal").classList.add("hidden");
-    document.getElementById("loggerFeedback").textContent = "GitHub connection saved locally in browser.";
-    fetchRepoData();
-  });
-
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      STATE.activeRadar = btn.dataset.radar;
-      renderRadar();
-    });
-  });
-
-  document.querySelectorAll(".view-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".view-tab").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".view-panel").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById(btn.dataset.view).classList.add("active");
-    });
-  });
-
-  document.querySelectorAll(".filter-chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".filter-chip").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      STATE.activeFilter = btn.dataset.filter;
-      renderWinLog();
-    });
-  });
-
-  fetchRepoData();
 });
