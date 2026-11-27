@@ -123,8 +123,9 @@ def ensure_future_slots(df: pd.DataFrame, th_map: dict[str, str], min_open_slots
 
 def build_features(data: pd.DataFrame):
     """
-    Returns (full_feature_df, tree_feature_cols, tabpfn_lean_cols).
-    TabPFN-3.5 gets a dedicated 18-feature matrix so its in-context attention is not diluted.
+    Returns (full_feature_df, tree_feature_cols, tabpfn_hybrid_cols).
+    TabPFN-3.5 gets a 28-feature hybrid matrix (18 temporal/lag features + 10 DoW x Session
+    any-position base rates) to prevent static anchor repetition while preserving token efficiency.
     """
     d = data.copy()
     d["Date_dt"] = pd.to_datetime(d["Date"])
@@ -209,15 +210,16 @@ def build_features(data: pd.DataFrame):
     ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
     tree_cols = [c for c in d.columns if c not in ignore_cols]
 
-    tabpfn_lean_cols = [
+    tabpfn_hybrid_cols = [
         "Is_PM", "DayOfWeek", "sin_doy", "cos_doy",
         "lag_1_tens", "lag_1_units", "lag_1_brake",
         "lag_2_tens", "lag_2_units", "lag_2_brake",
         "lag_3_tens", "lag_3_units", "lag_3_brake",
         "lag_4_num", "lag_5_num",
         "lag1_t_x_pm", "lag1_u_x_pm", "lag1_is_double",
-    ]
-    return d, tree_cols, tabpfn_lean_cols
+    ] + [f"dow_pm_any_rate_{k}" for k in range(10)]
+
+    return d, tree_cols, tabpfn_hybrid_cols
 
 
 def compute_drought_radar(hist: pd.DataFrame) -> dict:
@@ -253,7 +255,7 @@ def combine_t_u_brake(pt: np.ndarray, pu: np.ndarray, pb: np.ndarray) -> np.ndar
 
 
 def predict_bayesian_pure_transition(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
-    """Diverse Model 1: Pure Day-of-Week x Session + Intraday/Overnight Markov Transition."""
+    """Diverse Model 5: Pure Day-of-Week x Session + Intraday/Overnight Markov Transition."""
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
     units = nums % 10
@@ -294,10 +296,10 @@ def predict_bayesian_pure_transition(hist: pd.DataFrame, target_row: pd.Series) 
 
 def fit_ml_models(
     X_train_full: pd.DataFrame,
-    X_train_lean: pd.DataFrame,
+    X_train_hybrid: pd.DataFrame,
     y_num: np.ndarray,
 ):
-    """Fits 3 heads (Tens, Units, Modulo-10 Brake); TabPFN-3.5 uses the lean 18-feature matrix."""
+    """Fits 3 heads (Tens, Units, Modulo-10 Brake); TabPFN-3.5 uses the 28-feature hybrid matrix."""
     y_t = y_num // 10
     y_u = y_num % 10
     y_b = (y_t + y_u) % 10
@@ -340,7 +342,7 @@ def fit_ml_models(
             tp_heads = []
             for target in (y_t, y_u, y_b):
                 clf = TabPFNClassifier.create_default_for_version(ModelVersion.V3_5)
-                clf.fit(X_train_lean, target)
+                clf.fit(X_train_hybrid, target)
                 tp_heads.append(clf)
             models["TabPFN_3.5"] = tuple(tp_heads)
         except Exception as exc:
@@ -410,8 +412,11 @@ def evaluate_model_draw(m_info: dict, actual: int) -> dict:
     }
 
 
-def apply_weight_guardrails(raw_weights: dict[str, float], floor: float = 0.12, cap: float = 0.38) -> dict[str, float]:
-    """Clips committee weights to [floor, cap] and re-normalizes so they sum cleanly to 1.0."""
+def apply_weight_guardrails(raw_weights: dict[str, float], floor: float = 0.14, cap: float = 0.28) -> dict[str, float]:
+    """
+    Clips committee weights to [14%, 28%] so no single model can override a 3-model majority,
+    and re-normalizes so weights sum cleanly to 1.0.
+    """
     w = {m: float(v) for m, v in raw_weights.items()}
     s = sum(w.values())
     w = {m: v / s for m, v in w.items()}
@@ -444,7 +449,7 @@ def apply_weight_guardrails(raw_weights: dict[str, float], floor: float = 0.12, 
 
 
 def grade_consensus_item(item: dict, row: pd.Series) -> dict:
-    """Computes consensus outcome, actual string, and anchor hit flags from the true draws.csv row."""
+    """Computes consensus outcome, actual string, anchor flags, and full grid actual lookup."""
     actual = int(row["Winning_Number"])
     act_str = f"{actual:02d}"
     rev_str = f"{actual % 10}{actual // 10}"
@@ -470,14 +475,32 @@ def grade_consensus_item(item: dict, row: pd.Series) -> dict:
     item["outcome"] = outcome
     item["hit_primary_anchor"] = bool(anchor1 in act_digits)
     item["hit_secondary_anchor"] = bool(anchor2 in act_digits)
+
+    # Lookup actual winning number's predicted probability & rank across stored grid_100
+    actual_lookup = {}
+    c_grid = item.get("consensus_grid_100")
+    if isinstance(c_grid, list) and len(c_grid) == 100:
+        c_prob = float(c_grid[actual])
+        c_rank = int(sum(1 for p in c_grid if p > c_prob) + 1)
+        actual_lookup["Consensus"] = {"prob": round(c_prob, 4), "rank": c_rank}
+
+    for m_name, m_info in item.get("models", {}).items():
+        m_grid = m_info.get("grid_100")
+        if isinstance(m_grid, list) and len(m_grid) == 100:
+            m_prob = float(m_grid[actual])
+            m_rank = int(sum(1 for p in m_grid if p > m_prob) + 1)
+            actual_lookup[m_name] = {"prob": round(m_prob, 4), "rank": m_rank}
+
+    if actual_lookup:
+        item["actual_prob_lookup"] = actual_lookup
+
     return item
 
 
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
     """
-    Grades newly completed draws, removes undone entries, AND re-grades every
-    existing history entry's outcome & model points against draws.csv so manual
-    corrections in draws.csv always update the Win Log badge cleanly.
+    Grades newly completed draws, removes undone entries, re-grades existing history
+    against draws.csv, and rebuilds guarded [14% - 28%] committee weights.
     """
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
@@ -534,10 +557,108 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
         avg_pts = (st["total_points"] + 8.0 * 0.55) / (st["evaluated"] + 8.0)
         raw_weights[m] = avg_pts ** 1.5
 
-    state["model_weights"] = apply_weight_guardrails(raw_weights, floor=0.12, cap=0.38)
+    state["model_weights"] = apply_weight_guardrails(raw_weights, floor=0.14, cap=0.28)
     state["history"] = sorted_hist
     state["upcoming"] = still_upcoming
     return state
+
+
+def select_majority_protected_anchors(
+    p_anchor_consensus: np.ndarray,
+    model_top2_map: dict[str, list[int]],
+    min_votes: int = 2,
+) -> tuple[int, int, dict[int, int]]:
+    """
+    Selects Primary (d1) and Backup (d2) anchors using Majority-Vote Protection:
+    digits supported by >= 2 models in their top-2 anchors take priority over
+    single-model (1/5) spikes, ordered by blended anchor probability.
+    """
+    vote_counts = {d: 0 for d in range(10)}
+    for digits in model_top2_map.values():
+        for d in set(digits[:2]):
+            vote_counts[int(d)] += 1
+
+    ranked_all = [int(x) for x in np.argsort(p_anchor_consensus)[::-1]]
+    majority_digits = [d for d in ranked_all if vote_counts[d] >= min_votes]
+    solo_digits = [d for d in ranked_all if vote_counts[d] < min_votes]
+
+    ordered = majority_digits + solo_digits
+    return ordered[0], ordered[1], vote_counts
+
+
+def compute_confidence_score(
+    d1_votes: int,
+    d2_votes: int,
+    total_models: int,
+    d1: int,
+    d2: int,
+    model_top2_map: dict[str, list[int]],
+    model_stats: dict[str, dict],
+    core_top3_prob_sum: float,
+    step_idx: int,
+) -> dict:
+    """
+    0-100 Confidence Score combining 4 signals:
+      1. Committee Anchor Agreement (35 pts)
+      2. Top-2 Leaderboard Leaders Alignment (25 pts)
+      3. Core Top-3 Probability Lift vs. 3.0% Random Baseline (25 pts)
+      4. Forecast Horizon: Live Lag vs. Chained Slot (15 pts)
+    """
+    best_votes = max(d1_votes, d2_votes)
+    if best_votes >= 5:
+        agree_pts = 35
+    elif best_votes == 4:
+        agree_pts = 28
+    elif best_votes == 3:
+        agree_pts = 20
+    elif best_votes == 2 and min(d1_votes, d2_votes) >= 2:
+        agree_pts = 14
+    else:
+        agree_pts = 6
+
+    ranked_leaders = sorted(
+        MODEL_NAMES,
+        key=lambda m: model_stats.get(m, {}).get("total_points", 0.0),
+        reverse=True,
+    )[:2]
+    consensus_set = {d1, d2}
+    leader_hits = sum(
+        1 for m in ranked_leaders
+        if any(dig in consensus_set for dig in model_top2_map.get(m, []))
+    )
+    leader_pts = 25 if leader_hits == 2 else (13 if leader_hits == 1 else 0)
+
+    # Random baseline for 3 pairs is 0.0300 (3.0%); lift of 5.5x (16.5%+) earns full 25 pts
+    lift_ratio = core_top3_prob_sum / 0.03
+    lift_pts = int(round(min(25.0, max(0.0, (lift_ratio - 1.5) * 6.25))))
+
+    horizon_pts = 15 if step_idx == 0 else (4 if step_idx == 1 else 0)
+
+    total_score = int(min(100, max(0, agree_pts + leader_pts + lift_pts + horizon_pts)))
+
+    if total_score >= 75:
+        tier = "HIGH"
+        label = "HIGH CONVICTION"
+    elif total_score >= 50:
+        tier = "MODERATE"
+        label = "MODERATE"
+    else:
+        tier = "LOW"
+        label = "LOW / SPLIT"
+
+    return {
+        "score": total_score,
+        "tier": tier,
+        "label": label,
+        "breakdown": {
+            "agreement_pts": agree_pts,
+            "leaders_pts": leader_pts,
+            "lift_pts": lift_pts,
+            "horizon_pts": horizon_pts,
+            "top3_prob_sum": round(core_top3_prob_sum, 4),
+            "leaders_aligned": ranked_leaders,
+        },
+    }
 
 
 def main():
@@ -555,15 +676,15 @@ def main():
     hist["Winning_Number"] = hist["Winning_Number"].astype(int)
     state["drought_radar"] = compute_drought_radar(hist)
 
-    feat_df, tree_cols, lean_cols = build_features(df)
+    feat_df, tree_cols, hybrid_cols = build_features(df)
     completed_feats = feat_df[(feat_df["Session_ID"] >= 15) & (feat_df["Winning_Number"].notna())]
     train_df = completed_feats.tail(ROLLING_WINDOW)
 
     X_train_full = train_df[tree_cols].fillna(train_df[tree_cols].mean())
-    X_train_lean = train_df[lean_cols].fillna(train_df[lean_cols].mean())
+    X_train_hybrid = train_df[hybrid_cols].fillna(train_df[hybrid_cols].mean())
     y_train_num = train_df["Winning_Number"].astype(int).values
 
-    ml_models = fit_ml_models(X_train_full, X_train_lean, y_train_num)
+    ml_models = fit_ml_models(X_train_full, X_train_hybrid, y_train_num)
 
     # Autoregressive Sequential Chaining across the next 10 open trading slots
     sim_df = df.copy()
@@ -578,7 +699,7 @@ def main():
         target_row = sim_df.loc[row_mask].iloc[0]
 
         X_next_full = step_feats.loc[row_mask, tree_cols].fillna(X_train_full.mean())
-        X_next_lean = step_feats.loc[row_mask, lean_cols].fillna(X_train_lean.mean())
+        X_next_hybrid = step_feats.loc[row_mask, hybrid_cols].fillna(X_train_hybrid.mean())
 
         sim_hist_600 = sim_df[sim_df["Winning_Number"].notna()].tail(ROLLING_WINDOW).copy()
         model_grids = {
@@ -588,7 +709,7 @@ def main():
         for m_name, (clf_t, clf_u, clf_b) in ml_models.items():
             if m_name == "TabPFN_3.5" and tabpfn_quota_exhausted:
                 continue
-            X_in = X_next_lean if m_name == "TabPFN_3.5" else X_next_full
+            X_in = X_next_hybrid if m_name == "TabPFN_3.5" else X_next_full
             try:
                 pt = clf_t.predict_proba(X_in)[0]
                 pu = clf_u.predict_proba(X_in)[0]
@@ -608,26 +729,33 @@ def main():
             p_consensus += step_weights[m_name] * grid
         p_consensus /= p_consensus.sum()
 
-        p_anchor_consensus = grid_to_anchor_probs(p_consensus)
-        ranked_digits = np.argsort(p_anchor_consensus)[::-1]
-        d1, d2 = int(ranked_digits[0]), int(ranked_digits[1])
-
         model_breakdown = {}
-        d1_votes, d2_votes = 0, 0
+        model_top2_map = {}
         for m_name, grid in model_grids.items():
             m_anc = grid_to_anchor_probs(grid)
             m_top_digits = [int(x) for x in np.argsort(m_anc)[::-1][:2]]
-            if d1 in m_top_digits:
-                d1_votes += 1
-            if d2 in m_top_digits:
-                d2_votes += 1
-            m_top_pairs = [f"{idx:02d}" for idx in np.argsort(grid)[::-1][:3]]
+            model_top2_map[m_name] = m_top_digits
+            top_indices = np.argsort(grid)[::-1][:3]
+            m_top_pairs = [f"{int(idx):02d}" for idx in top_indices]
+            m_top_pairs_prob = [
+                {"pair": f"{int(idx):02d}", "prob": round(float(grid[idx]), 4)}
+                for idx in top_indices
+            ]
             model_breakdown[m_name] = {
                 "anchor_digit": m_top_digits[0],
                 "backup_digit": m_top_digits[1],
                 "anchor_prob": round(float(m_anc[m_top_digits[0]]), 4),
                 "top_pairs": m_top_pairs,
+                "top_pairs_prob": m_top_pairs_prob,
+                "grid_100": [round(float(x), 4) for x in grid],
             }
+
+        p_anchor_consensus = grid_to_anchor_probs(p_consensus)
+        d1, d2, vote_counts = select_majority_protected_anchors(
+            p_anchor_consensus, model_top2_map, min_votes=2
+        )
+        d1_votes = vote_counts[d1]
+        d2_votes = vote_counts[d2]
 
         anchor_filtered_pairs = []
         for idx in np.argsort(p_consensus)[::-1]:
@@ -637,15 +765,30 @@ def main():
                     m for m, info in model_breakdown.items()
                     if f"{idx:02d}" in info["top_pairs"] or info["anchor_digit"] in (t, u)
                 ]
+                rank_num = len(anchor_filtered_pairs) + 1
                 anchor_filtered_pairs.append({
                     "pair": f"{idx:02d}",
                     "reverse": f"{u}{t}",
                     "prob": round(float(p_consensus[idx]), 4),
+                    "tier": "CORE" if rank_num <= 3 else "EXTENDED",
                     "contains_primary": bool(t == d1 or u == d1),
                     "supporters": supporters,
                 })
             if len(anchor_filtered_pairs) >= 6:
                 break
+
+        core_top3_prob_sum = sum(p["prob"] for p in anchor_filtered_pairs[:3])
+        confidence = compute_confidence_score(
+            d1_votes=d1_votes,
+            d2_votes=d2_votes,
+            total_models=len(model_grids),
+            d1=d1,
+            d2=d2,
+            model_top2_map=model_top2_map,
+            model_stats=state.get("model_stats", {}),
+            core_top3_prob_sum=core_top3_prob_sum,
+            step_idx=step_idx,
+        )
 
         top1_pair_str = anchor_filtered_pairs[0]["pair"]
         sim_df.loc[row_mask, "Winning_Number"] = float(int(top1_pair_str))
@@ -660,6 +803,7 @@ def main():
             "session": "PM" if int(target_row["Is_PM"]) == 1 else "AM",
             "forecast_mode": "LIVE_LAG" if step_idx == 0 else "CHAINED",
             "chained_from": list(chained_pairs_so_far[-2:]),
+            "confidence": confidence,
             "primary_anchor": {
                 "digit": d1,
                 "prob": round(float(p_anchor_consensus[d1]), 4),
@@ -672,6 +816,7 @@ def main():
             },
             "intersection_pairs": [f"{d1}{d2}", f"{d2}{d1}"],
             "top_pairs": anchor_filtered_pairs,
+            "consensus_grid_100": [round(float(x), 4) for x in p_consensus],
             "models": model_breakdown,
         })
         chained_pairs_so_far.append(top1_pair_str)
@@ -683,7 +828,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions & Win Log outcome badges re-synced.")
+    print("[OK] SAI 2D predictions, confidence scores, grid_100 archive & Win Log synced.")
 
 
 if __name__ == "__main__":
