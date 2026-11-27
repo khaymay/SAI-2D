@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
 import holidays
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -15,9 +16,16 @@ PRED_PATH = "data/predictions.json"
 MODEL_NAMES = ["TabPFN_3.5", "LightGBM", "CatBoost", "L2_Logistic", "Bayesian_Markov"]
 YANGON_TZ = timezone(timedelta(hours=6, minutes=30))
 ROLLING_WINDOW = 600
+DATE_FMT = "%m/%d/%Y"
 
 # Precomputed (10, 10) lookup matrix of Brake = (t + u) % 10
 BRAKE_IDX = (np.arange(10)[:, None] + np.arange(10)[None, :]) % 10
+# Uniform 100-bin baseline Brier score: sum_{k=0}^{99} (0.01 - y_k)^2 = 0.99 * (0.01^2) + (0.99^2) = 0.9802
+UNIFORM_BRIER_REF = 0.9802
+
+
+def parse_dates_series(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series.astype(str).str.strip(), format=DATE_FMT)
 
 
 def get_thai_holiday_map(years: list[int]) -> dict[str, str]:
@@ -31,16 +39,16 @@ def get_thai_holiday_map(years: list[int]) -> dict[str, str]:
 
 
 def format_short_date(date_str: str) -> str:
-    dt = pd.to_datetime(date_str)
+    dt = datetime.strptime(str(date_str).strip(), DATE_FMT)
     return f"{dt.day} {dt.strftime('%b')}"
 
 
 def format_day_name(date_str: str) -> str:
-    return pd.to_datetime(date_str).strftime("%A")
+    return datetime.strptime(str(date_str).strip(), DATE_FMT).strftime("%A")
 
 
 def format_day_short(date_str: str) -> str:
-    return pd.to_datetime(date_str).strftime("%a")
+    return datetime.strptime(str(date_str).strip(), DATE_FMT).strftime("%a")
 
 
 def default_model_stat() -> dict:
@@ -53,6 +61,12 @@ def default_model_stat() -> dict:
         "reverse_hits": 0,
         "pos_pair_hits": 0,
         "any_pair_hits": 0,
+        "prob_evaluated": 0,
+        "log_loss_sum": 0.0,
+        "brier_score_sum": 0.0,
+        "avg_log_loss": None,
+        "avg_brier_score": None,
+        "brier_skill_vs_uniform": None,
     }
 
 
@@ -64,6 +78,8 @@ def load_existing_predictions() -> dict:
         "app_name": "SAI 2D",
         "updated_at": None,
         "updated_at_iso": None,
+        "active_models": list(MODEL_NAMES),
+        "model_status": {m: "unknown" for m in MODEL_NAMES},
         "thai_holidays": {},
         "model_weights": {m: 0.20 for m in MODEL_NAMES},
         "model_stats": {m: default_model_stat() for m in MODEL_NAMES},
@@ -79,7 +95,7 @@ def ensure_future_slots(df: pd.DataFrame, th_map: dict[str, str], min_open_slots
     then generates at least `min_open_slots` (10 = full 5-day week) valid trading slots.
     """
     is_open = df["Winning_Number"].isna()
-    is_hol = df["Date"].astype(str).isin(th_map.keys())
+    is_hol = df["Date"].astype(str).str.strip().isin(th_map.keys())
     cleaned = df[~(is_open & is_hol)].copy().reset_index(drop=True)
 
     open_count = int(cleaned["Winning_Number"].isna().sum())
@@ -89,7 +105,7 @@ def ensure_future_slots(df: pd.DataFrame, th_map: dict[str, str], min_open_slots
     rows = cleaned.to_dict("records")
     last = rows[-1]
     cur_sid = int(last["Session_ID"])
-    cur_date = pd.to_datetime(last["Date"])
+    cur_date = datetime.strptime(str(last["Date"]).strip(), DATE_FMT)
     cur_pm = int(last["Is_PM"])
 
     while sum(1 for r in rows if pd.isna(r["Winning_Number"])) < min_open_slots:
@@ -98,18 +114,18 @@ def ensure_future_slots(df: pd.DataFrame, th_map: dict[str, str], min_open_slots
             cur_pm = 1
         else:
             cur_pm = 0
-            cur_date += pd.Timedelta(days=1)
+            cur_date += timedelta(days=1)
             while True:
                 date_key = f"{cur_date.month}/{cur_date.day}/{cur_date.year}"
                 if cur_date.weekday() < 5 and date_key not in th_map:
                     break
-                cur_date += pd.Timedelta(days=1)
+                cur_date += timedelta(days=1)
 
         date_str = f"{cur_date.month}/{cur_date.day}/{cur_date.year}"
         rows.append({
             "Session_ID": cur_sid,
             "Year": int(cur_date.year),
-            "Day_of_Year": int(cur_date.dayofyear),
+            "Day_of_Year": int(cur_date.timetuple().tm_yday),
             "Date": date_str,
             "Is_PM": cur_pm,
             "Winning_Number": np.nan,
@@ -128,8 +144,8 @@ def build_features(data: pd.DataFrame):
     any-position base rates) to prevent static anchor repetition while preserving token efficiency.
     """
     d = data.copy()
-    d["Date_dt"] = pd.to_datetime(d["Date"])
-    d["DayOfWeek"] = d["Date_dt"].dt.dayofweek
+    date_dt = parse_dates_series(d["Date"])
+    d["DayOfWeek"] = date_dt.dt.dayofweek
     nums = d["Winning_Number"].values
     dows = d["DayOfWeek"].values
     pms = d["Is_PM"].values
@@ -207,7 +223,7 @@ def build_features(data: pd.DataFrame):
         d[f"dow_pm_units_rate_{k}"] = dow_u_rate[:, k]
         d[f"dow_pm_any_rate_{k}"] = dow_any_rate[:, k]
 
-    ignore_cols = {"Session_ID", "Date", "Date_dt", "Winning_Number"}
+    ignore_cols = {"Session_ID", "Date", "Winning_Number"}
     tree_cols = [c for c in d.columns if c not in ignore_cols]
 
     tabpfn_hybrid_cols = [
@@ -254,24 +270,25 @@ def combine_t_u_brake(pt: np.ndarray, pu: np.ndarray, pb: np.ndarray) -> np.ndar
     return grid / grid.sum()
 
 
-def predict_bayesian_pure_transition(hist: pd.DataFrame, target_row: pd.Series) -> np.ndarray:
-    """Diverse Model 5: Pure Day-of-Week x Session + Intraday/Overnight Markov Transition."""
+def predict_bayesian_pure_transition(hist: pd.DataFrame, target_row: pd.Series, last_observed_num: int) -> np.ndarray:
+    """
+    Model 5: Pure Day-of-Week x Session + Intraday/Overnight Markov Transition.
+    Uses only observed historical draws and explicit lag state without mutating ground truth.
+    """
     nums = hist["Winning_Number"].astype(int).values
     tens = nums // 10
     units = nums % 10
 
-    d_dt = pd.to_datetime(hist["Date"])
-    dow_hist = d_dt.dt.dayofweek.values
+    dow_hist = parse_dates_series(hist["Date"]).dt.dayofweek.values
     is_pm_hist = hist["Is_PM"].values
-    t_dow = pd.to_datetime(target_row["Date"]).dayofweek
+    t_dow = datetime.strptime(str(target_row["Date"]).strip(), DATE_FMT).weekday()
     t_pm = int(target_row["Is_PM"])
 
     mask = (dow_hist == t_dow) & (is_pm_hist == t_pm)
     sub_nums = nums[mask]
     p_exact_dow = (np.bincount(sub_nums, minlength=100) + 0.60) / (len(sub_nums) + 60.0)
 
-    last_num = int(nums[-1])
-    last_t, last_u = last_num // 10, last_num % 10
+    last_t, last_u = int(last_observed_num) // 10, int(last_observed_num) % 10
     t_mat = np.ones((10, 10)) * 2.0
     u_mat = np.ones((10, 10)) * 2.0
     trans_mask = is_pm_hist[1:] == t_pm
@@ -299,11 +316,17 @@ def fit_ml_models(
     X_train_hybrid: pd.DataFrame,
     y_num: np.ndarray,
 ):
-    """Fits 3 heads (Tens, Units, Modulo-10 Brake); TabPFN-3.5 uses the 28-feature hybrid matrix."""
+    """
+    Fits 3 heads (Tens, Units, Modulo-10 Brake).
+    LightGBM and CatBoost handle NaNs natively without aggregate imputation leakage;
+    L2_Logistic uses a causal imputer fitted strictly on X_train_full.
+    """
     y_t = y_num // 10
     y_u = y_num % 10
     y_b = (y_t + y_u) % 10
     models = {}
+    status = {m: "inactive" for m in MODEL_NAMES}
+    status["Bayesian_Markov"] = "active"
 
     lgb_heads = []
     for target in (y_t, y_u, y_b):
@@ -315,6 +338,7 @@ def fit_ml_models(
         clf.fit(X_train_full, target)
         lgb_heads.append(clf)
     models["LightGBM"] = tuple(lgb_heads)
+    status["LightGBM"] = "active"
 
     cb_heads = []
     for target in (y_t, y_u, y_b):
@@ -325,16 +349,24 @@ def fit_ml_models(
         clf.fit(X_train_full, target)
         cb_heads.append(clf)
     models["CatBoost"] = tuple(cb_heads)
+    status["CatBoost"] = "active"
 
     lr_heads = []
     for target in (y_t, y_u, y_b):
-        clf = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=600))
+        clf = make_pipeline(
+            SimpleImputer(strategy="mean"),
+            StandardScaler(),
+            LogisticRegression(C=0.05, max_iter=600),
+        )
         clf.fit(X_train_full, target)
         lr_heads.append(clf)
     models["L2_Logistic"] = tuple(lr_heads)
+    status["L2_Logistic"] = "active"
 
     token = os.environ.get("TABPFN_TOKEN", "").strip()
-    if token:
+    if not token:
+        status["TabPFN_3.5"] = "no_token"
+    else:
         try:
             from tabpfn_client import TabPFNClassifier, set_access_token
             from tabpfn_client.api_models import ModelVersion
@@ -345,10 +377,67 @@ def fit_ml_models(
                 clf.fit(X_train_hybrid, target)
                 tp_heads.append(clf)
             models["TabPFN_3.5"] = tuple(tp_heads)
+            status["TabPFN_3.5"] = "active"
         except Exception as exc:
             print(f"[WARN] TabPFN-3.5 skipped during fit: {exc}")
+            status["TabPFN_3.5"] = "quota_skipped"
 
-    return models
+    return models, status
+
+
+def build_chained_row_features(
+    base_row: pd.Series,
+    propagated_lags: list[int],
+    tree_cols: list[str],
+    hybrid_cols: list[str],
+    hist_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Constructs a single forecast feature row for chained future slots (`step_idx > 0`)
+    using explicitly propagated lag draws without mutating observed ground truth or
+    recomputing full-dataset rolling statistics inside the loop.
+    """
+    dt = datetime.strptime(str(base_row["Date"]).strip(), DATE_FMT)
+    doy = int(base_row["Day_of_Year"])
+    dow = int(dt.weekday())
+    is_pm = int(base_row["Is_PM"])
+
+    row_dict = {col: np.nan for col in tree_cols}
+    row_dict["Year"] = int(base_row["Year"])
+    row_dict["Day_of_Year"] = doy
+    row_dict["Is_PM"] = is_pm
+    row_dict["DayOfWeek"] = dow
+    row_dict["sin_doy"] = float(np.sin(2 * np.pi * doy / 365.25))
+    row_dict["cos_doy"] = float(np.cos(2 * np.pi * doy / 365.25))
+
+    lag_map = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 10: 9}
+    for lag, idx in lag_map.items():
+        if idx < len(propagated_lags):
+            val = float(propagated_lags[idx])
+            t_val = float(int(val) // 10)
+            u_val = float(int(val) % 10)
+            b_val = float((int(t_val) + int(u_val)) % 10)
+            row_dict[f"lag_{lag}_num"] = val
+            row_dict[f"lag_{lag}_tens"] = t_val
+            row_dict[f"lag_{lag}_units"] = u_val
+            row_dict[f"lag_{lag}_brake"] = b_val
+
+    if not np.isnan(row_dict.get("lag_1_tens", np.nan)):
+        row_dict["lag1_t_x_pm"] = row_dict["lag_1_tens"] * is_pm
+        row_dict["lag1_u_x_pm"] = row_dict["lag_1_units"] * is_pm
+        row_dict["lag1_is_double"] = float(row_dict["lag_1_tens"] == row_dict["lag_1_units"])
+
+    # Carry forward latest observed DoW x Session rates and recent rolling digit frequencies
+    if len(hist_df) > 0:
+        last_hist = hist_df.iloc[-1]
+        for col in tree_cols:
+            if col.startswith("dow_pm_") or col.startswith("tens_roll") or col.startswith("units_roll") or col.startswith("recent_carry_"):
+                if col in last_hist.index:
+                    row_dict[col] = last_hist[col]
+
+    full_df = pd.DataFrame([row_dict])[tree_cols]
+    hybrid_df = full_df[hybrid_cols]
+    return full_df, hybrid_df
 
 
 def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
@@ -356,6 +445,17 @@ def grid_to_anchor_probs(p_100: np.ndarray) -> np.ndarray:
     p_t = mat.sum(axis=1)
     p_u = mat.sum(axis=0)
     return p_t + p_u - (p_t * p_u)
+
+
+def score_probability_grid(grid_100: list[float], actual: int) -> tuple[float, float]:
+    """Computes single-draw multi-class log-loss and Brier score over 100 outcomes."""
+    probs = np.clip(np.asarray(grid_100, dtype=float), 1e-6, 1.0)
+    probs = probs / probs.sum()
+    ll = float(-np.log(probs[actual]))
+    y_one_hot = np.zeros(100, dtype=float)
+    y_one_hot[actual] = 1.0
+    brier = float(np.sum((probs - y_one_hot) ** 2))
+    return ll, brier
 
 
 def evaluate_model_draw(m_info: dict, actual: int) -> dict:
@@ -476,7 +576,6 @@ def grade_consensus_item(item: dict, row: pd.Series) -> dict:
     item["hit_primary_anchor"] = bool(anchor1 in act_digits)
     item["hit_secondary_anchor"] = bool(anchor2 in act_digits)
 
-    # Lookup actual winning number's predicted probability & rank across stored grid_100
     actual_lookup = {}
     c_grid = item.get("consensus_grid_100")
     if isinstance(c_grid, list) and len(c_grid) == 100:
@@ -500,7 +599,8 @@ def grade_consensus_item(item: dict, row: pd.Series) -> dict:
 def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
     """
     Grades newly completed draws, removes undone entries, re-grades existing history
-    against draws.csv, and rebuilds guarded [14% - 28%] committee weights.
+    against draws.csv, computes probabilistic calibration metrics (log-loss & Brier score),
+    and rebuilds guarded [14% - 28%] committee weights.
     """
     completed_rows = df[df["Winning_Number"].notna()].copy()
     completed_map = {
@@ -549,6 +649,25 @@ def score_completed_sessions(df: pd.DataFrame, state: dict) -> dict:
             m_info["earned_pts"] = ev["earned"]
             m_info["score_detail"] = ev
 
+            m_grid = m_info.get("grid_100")
+            if isinstance(m_grid, list) and len(m_grid) == 100:
+                ll, brier = score_probability_grid(m_grid, actual)
+                st["prob_evaluated"] += 1
+                st["log_loss_sum"] += ll
+                st["brier_score_sum"] += brier
+
+    for m_name, st in rebuilt_stats.items():
+        p_eval = st["prob_evaluated"]
+        if p_eval > 0:
+            avg_ll = st["log_loss_sum"] / p_eval
+            avg_br = st["brier_score_sum"] / p_eval
+            bss = 1.0 - (avg_br / UNIFORM_BRIER_REF)
+            st["avg_log_loss"] = round(avg_ll, 4)
+            st["avg_brier_score"] = round(avg_br, 5)
+            st["brier_skill_vs_uniform"] = round(bss, 4)
+        st.pop("log_loss_sum", None)
+        st.pop("brier_score_sum", None)
+
     state["model_stats"] = rebuilt_stats
 
     raw_weights = {}
@@ -589,7 +708,6 @@ def select_majority_protected_anchors(
 def compute_confidence_score(
     d1_votes: int,
     d2_votes: int,
-    total_models: int,
     d1: int,
     d2: int,
     model_top2_map: dict[str, list[int]],
@@ -628,7 +746,6 @@ def compute_confidence_score(
     )
     leader_pts = 25 if leader_hits == 2 else (13 if leader_hits == 1 else 0)
 
-    # Random baseline for 3 pairs is 0.0300 (3.0%); lift of 5.5x (16.5%+) earns full 25 pts
     lift_ratio = core_top3_prob_sum / 0.03
     lift_pts = int(round(min(25.0, max(0.0, (lift_ratio - 1.5) * 6.25))))
 
@@ -676,34 +793,46 @@ def main():
     hist["Winning_Number"] = hist["Winning_Number"].astype(int)
     state["drought_radar"] = compute_drought_radar(hist)
 
+    # Precompute historical features once outside the open_sids chaining loop
     feat_df, tree_cols, hybrid_cols = build_features(df)
     completed_feats = feat_df[(feat_df["Session_ID"] >= 15) & (feat_df["Winning_Number"].notna())]
     train_df = completed_feats.tail(ROLLING_WINDOW)
 
-    X_train_full = train_df[tree_cols].fillna(train_df[tree_cols].mean())
-    X_train_hybrid = train_df[hybrid_cols].fillna(train_df[hybrid_cols].mean())
+    X_train_full = train_df[tree_cols]
+    X_train_hybrid = train_df[hybrid_cols]
     y_train_num = train_df["Winning_Number"].astype(int).values
 
-    ml_models = fit_ml_models(X_train_full, X_train_hybrid, y_train_num)
+    ml_models, model_status = fit_ml_models(X_train_full, X_train_hybrid, y_train_num)
 
-    # Autoregressive Sequential Chaining across the next 10 open trading slots
-    sim_df = df.copy()
-    open_sids = sim_df.loc[sim_df["Winning_Number"].isna(), "Session_ID"].astype(int).tolist()[:10]
+    obs_hist_600 = hist.tail(ROLLING_WINDOW).copy()
+    last_obs_num = int(obs_hist_600["Winning_Number"].iloc[-1])
+    propagated_lags = [int(x) for x in obs_hist_600["Winning_Number"].iloc[::-1].tolist()[:10]]
+
+    open_rows = df[df["Winning_Number"].isna()].head(10)
     new_upcoming = []
     chained_pairs_so_far = []
     tabpfn_quota_exhausted = False
 
-    for step_idx, sid in enumerate(open_sids):
-        step_feats, _, _ = build_features(sim_df)
-        row_mask = step_feats["Session_ID"] == sid
-        target_row = sim_df.loc[row_mask].iloc[0]
+    for step_idx, (_, target_row) in enumerate(open_rows.iterrows()):
+        sid = int(target_row["Session_ID"])
 
-        X_next_full = step_feats.loc[row_mask, tree_cols].fillna(X_train_full.mean())
-        X_next_hybrid = step_feats.loc[row_mask, hybrid_cols].fillna(X_train_hybrid.mean())
+        if step_idx == 0:
+            row_mask = feat_df["Session_ID"] == sid
+            X_next_full = feat_df.loc[row_mask, tree_cols]
+            X_next_hybrid = feat_df.loc[row_mask, hybrid_cols]
+            markov_lag_num = last_obs_num
+        else:
+            X_next_full, X_next_hybrid = build_chained_row_features(
+                base_row=target_row,
+                propagated_lags=propagated_lags,
+                tree_cols=tree_cols,
+                hybrid_cols=hybrid_cols,
+                hist_df=completed_feats.tail(ROLLING_WINDOW),
+            )
+            markov_lag_num = propagated_lags[0]
 
-        sim_hist_600 = sim_df[sim_df["Winning_Number"].notna()].tail(ROLLING_WINDOW).copy()
         model_grids = {
-            "Bayesian_Markov": predict_bayesian_pure_transition(sim_hist_600, target_row)
+            "Bayesian_Markov": predict_bayesian_pure_transition(obs_hist_600, target_row, markov_lag_num)
         }
 
         for m_name, (clf_t, clf_u, clf_b) in ml_models.items():
@@ -719,6 +848,7 @@ def main():
                 print(f"[WARN] {m_name} skipped at step {step_idx + 1}: {exc}")
                 if m_name == "TabPFN_3.5":
                     tabpfn_quota_exhausted = True
+                    model_status["TabPFN_3.5"] = "quota_skipped"
 
         step_weights = {m: state["model_weights"].get(m, 0.20) for m in model_grids}
         w_sum = sum(step_weights.values())
@@ -742,6 +872,7 @@ def main():
                 for idx in top_indices
             ]
             model_breakdown[m_name] = {
+                "active_in_forecast": True,
                 "anchor_digit": m_top_digits[0],
                 "backup_digit": m_top_digits[1],
                 "anchor_prob": round(float(m_anc[m_top_digits[0]]), 4),
@@ -781,7 +912,6 @@ def main():
         confidence = compute_confidence_score(
             d1_votes=d1_votes,
             d2_votes=d2_votes,
-            total_models=len(model_grids),
             d1=d1,
             d2=d2,
             model_top2_map=model_top2_map,
@@ -791,9 +921,10 @@ def main():
         )
 
         top1_pair_str = anchor_filtered_pairs[0]["pair"]
-        sim_df.loc[row_mask, "Winning_Number"] = float(int(top1_pair_str))
+        propagated_lags = [int(top1_pair_str)] + propagated_lags[:-1]
 
-        raw_date = str(target_row["Date"])
+        raw_date = str(target_row["Date"]).strip()
+        active_slot_models = list(model_grids.keys())
         new_upcoming.append({
             "session_id": sid,
             "date": raw_date,
@@ -802,6 +933,7 @@ def main():
             "day_full": format_day_name(raw_date),
             "session": "PM" if int(target_row["Is_PM"]) == 1 else "AM",
             "forecast_mode": "LIVE_LAG" if step_idx == 0 else "CHAINED",
+            "active_models": active_slot_models,
             "chained_from": list(chained_pairs_so_far[-2:]),
             "confidence": confidence,
             "primary_anchor": {
@@ -821,6 +953,8 @@ def main():
         })
         chained_pairs_so_far.append(top1_pair_str)
 
+    state["active_models"] = list(model_grids.keys()) if new_upcoming else list(ml_models.keys()) + ["Bayesian_Markov"]
+    state["model_status"] = model_status
     state["upcoming"] = new_upcoming
     state["updated_at_iso"] = now_mmt.isoformat()
     state["updated_at"] = f"{now_mmt.day} {now_mmt.strftime('%b')} • {now_mmt.strftime('%I:%M %p').lstrip('0')} MMT"
@@ -828,7 +962,7 @@ def main():
 
     with open(PRED_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("[OK] SAI 2D predictions, confidence scores, grid_100 archive & Win Log synced.")
+    print("[OK] SAI 2D pipeline upgraded: decoupled chaining, causal imputation, log-loss/Brier, active model status.")
 
 
 if __name__ == "__main__":
